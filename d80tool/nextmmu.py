@@ -37,7 +37,8 @@ FDC_PORTS = {0x81, 0x83, 0x85, 0x87, 0x89, 0x91, 0x99}
 RETN = {0x45, 0x55, 0x65, 0x75, 0x5D, 0x6D, 0x7D}
 STD_PAGES = {2: 10, 3: 11, 4: 4, 5: 5, 6: 0, 7: 1}  # 48K mode MMU slots 2..7
 
-DEFAULT_PAGES = PageMap(image=list(range(0x40, 0x40 + 104)))
+DEFAULT_PAGES = PageMap(image=list(range(0x40, 0x40 + 104)),
+                        image_b=list(range(0x12, 0x40)) + list(range(0xA8, 0xE0)))
 
 
 class InvariantError(Exception):
@@ -176,7 +177,7 @@ class NextZ80(Z80):
             elif a < 0x2000:
                 self.mdos_rom_writes.append((self.pc, a))   # bank 3 is read-only
             else:
-                if a < 0x3800 and not 0x2700 <= a < 0x2900:
+                if a < 0x3800 and not 0x2600 <= a < 0x2900:   # driver data
                     self.mdos_rom_writes.append((self.pc, a))
                 self.mdb[a - 0x2000] = v & 0xFF
             return
@@ -237,7 +238,7 @@ class NextZ80(Z80):
             self.nr06 = val
             return
         slot = reg - 0x50
-        if slot in (2, 7) and (val == STD_PAGES[slot] or val in self.pages):
+        if slot in (2, 6, 7) and (val == STD_PAGES[slot] or val in self.pages):
             self.mmu[slot] = val
         else:
             raise InvariantError(f"unexpected NEXTREG {reg:#x},{val:#x} at pc={self.pc:#06x}")
@@ -248,14 +249,16 @@ class DidaktikNext(Spectrum48):
 
     def __init__(self, mdos_rom: bytes, rom48: bytes, image: bytes,
                  pages: PageMap = DEFAULT_PAGES, sd: SdMap | None = None,
-                 card: SpiSdCard | None = None) -> None:
+                 card: SpiSdCard | None = None, image_b: bytes | None = None,
+                 sd_b: SdMap | None = None) -> None:
         if len(rom48) != 16384:
             raise ValueError("48K ROM must be 16384 bytes")
         self.pagemap = pages
         self.mem = bytearray(0x10000)
-        built = build_pages(mdos_rom, image, pages, sd=sd)
-        self.sd, self.card = sd, card
-        self.n_secs = built.n_secs
+        built = build_pages(mdos_rom, image, pages, sd=sd, image_b=image_b, sd_b=sd_b,
+                            rom48=rom48)
+        self.sd, self.sd_b, self.card = sd, sd_b, card
+        self.n_secs, self.n_secs_b = built.n_secs, built.n_secs_b
         self.cpu = NextZ80(rom48, built.mda, built.mdb, built.image_pages, self.mem)
         self.cpu.halt_di_error = False
         self.cpu.port_in = self.port_in
@@ -276,8 +279,14 @@ class DidaktikNext(Spectrum48):
         self.snap_at: list[tuple[int, bool]] = []
         self.snap_results: list[bool] = []
         self.snaps = 0                      # NMIs the button actually raised
+        self.nr_select = 0                  # port #243B
+        self.drive_release = 0              # CPU step at which DRIVE is let go
 
     def port_in(self, port: int) -> int:
+        if port & 0xFFFF == 0x253B:
+            if self.nr_select == 0x10:          # bit 1: DRIVE button held
+                return 0x02 if self.cpu.steps < self.drive_release else 0x00
+            raise InvariantError(f"NextReg {self.nr_select:#x} read at pc={self.cpu.pc:#06x}")
         if port & 0xFF in FDC_PORTS:
             self.fdc_access.append((self.cpu.pc, port))
         if self.card is not None and port & 0xFF == 0xEB:
@@ -285,6 +294,9 @@ class DidaktikNext(Spectrum48):
         return super().port_in(port)
 
     def port_out(self, port: int, v: int) -> None:
+        if port & 0xFFFF == 0x243B:
+            self.nr_select = v
+            return
         if port & 0xFF in FDC_PORTS:
             self.fdc_access.append((self.cpu.pc, port))
         if self.card is not None and port & 0xFF in (0xE7, 0xEB):
@@ -292,16 +304,17 @@ class DidaktikNext(Spectrum48):
                 raise InvariantError(f"SD access with interrupts on at pc={self.cpu.pc:#06x}")
             self.card.port_out(port, v)
 
-    def card_image(self) -> bytes:
-        """The image file as it is on the model card (through the extents)."""
+    def card_image(self, drive: int = 0) -> bytes:
+        """Image file A: (drive 0) or B: as it is on the model card (through its extents)."""
         unit = 1 if self.card.block_addr else 512
+        sd, n_secs = (self.sd, self.n_secs) if drive == 0 else (self.sd_b, self.n_secs_b)
         out = b""
-        for addr, n in self.sd.extents:
+        for addr, n in sd.extents:
             s = addr // unit
             out += bytes(self.card.data[s * 512:(s + n) * 512])
-        return out[:self.n_secs * 512]
+        return out[:n_secs * 512]
 
-    def press_snap(self, force: bool = False) -> bool:
+    def press_snap(self, force: bool = False, hold: int = 50) -> bool:
         """Press the DRIVE button now.  Returns True if it raised the NMI.
 
         hotkey_drive is an edge: a press while NextReg #06 bit 4 is clear or
@@ -310,6 +323,7 @@ class DidaktikNext(Spectrum48):
         c = self.cpu
         if not (force or c.nr06 & 0x10) or c.nmi_active:
             return False
+        self.drive_release = c.steps + hold    # held for this many CPU steps
         c.nmi_active = c.button_nmi = True
         c.nmi()
         self.snaps += 1
@@ -319,11 +333,15 @@ class DidaktikNext(Spectrum48):
     def mdos_paged(self) -> bool:
         return self.cpu.mapped
 
-    def image_bytes(self) -> bytes:
-        """The RAM copy of the image (shows what MDOS wrote)."""
+    def image_bytes(self, drive: int = 0) -> bytes:
+        """The RAM copy of image A: (drive 0) or B: (shows what MDOS wrote)."""
         pages = self.cpu.pages
-        n = -(-self.n_secs // 16)
-        return b"".join(bytes(pages[p]) for p in self.pagemap.image[:n])[:self.n_secs * 512]
+        if drive == 0:
+            plist, n_secs = self.pagemap.image, self.n_secs
+        else:
+            plist, n_secs = self.pagemap.image_b, self.n_secs_b
+        n = -(-n_secs // 16)
+        return b"".join(bytes(pages[p]) for p in plist[:n])[:n_secs * 512]
 
     def screen_text(self) -> list[str]:
         """The 24x32 character screen, read back with the 48K ROM font (#3D00)."""
@@ -353,7 +371,7 @@ class DidaktikNext(Spectrum48):
                     self.user_pageouts += 1
                 if self.snap_at and c.pc == self.snap_at[0][0]:
                     self.snap_results.append(self.press_snap(self.snap_at.pop(0)[1]))
-                if c.mmu[2] != STD_PAGES[2] or c.mmu[7] != STD_PAGES[7]:
+                if any(c.mmu[s] != STD_PAGES[s] for s in (2, 6, 7)):
                     if c.iff1:
                         raise InvariantError(f"image page mapped with interrupts on at pc={c.pc:#06x}")
                 c.step()

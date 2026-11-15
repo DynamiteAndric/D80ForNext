@@ -1,6 +1,6 @@
 ; ---------------------------------------------------------------------------
 ; Raw SD card access over the Next SPI ports.  This file is included by both
-; mdospatch.asm (writes at MDOS run time) and d80.asm (map check, self-test).
+; mdospatch.asm (writes at MDOS run time) and d80.asm (map check: reads only).
 ;
 ; The includer defines these variables:
 ;   sd_cs   db  chip select value: #FE = SD card 0, #FD = SD card 1
@@ -143,6 +143,7 @@ sd_fail:
     scf
     ret
 
+    IFNDEF SD_READ_ONLY                 ; (d80.asm only reads)
 ; CMD24: write 512 bytes from HL to the sector at sd_arg; HL = 0 writes
 ; 512 x #E5 (a freshly formatted sector)
 sd_write:
@@ -200,3 +201,4 @@ sd_write:
     call sd_end
     or a
     ret
+    ENDIF

@@ -97,15 +97,21 @@ NR_PERIPH2  equ #06             ; bit 4: DivMMC NMI from the DRIVE button (SNAP)
     xor a
     ret
 
-; --- FDC command helpers: "command done", track 0 seen only on drive 0
+; --- FDC command helpers: "command done", track 0 seen on drives with an image
     ORG #2340
     xor a                       ; status: no error
     ret
     ORG #234B
     ld a,ixl                    ; descriptor #3E00 = drive 0, #3E0C = drive 1
     and a
+    jr z,.a
+    cp #0C
+    ld a,1
+    jr z,.a
+    inc a                       ; C:, D: (#3E18, ...): never an image
+.a: call drv_present
     ld a,#04                    ; bit 2 = track 0
-    ret z
+    ret nz
     xor a
     ret
 
@@ -155,17 +161,20 @@ moved_1ff8:
     ex (sp),hl
     jp #2000
 
-; #256D replacement.  In: A = drive.  Out: NZ = disk present (drive 0 only).
+; #256D replacement.  In: A = drive.  Out: NZ = disk present (an image in it).
 disk_ready:
-    and a
-    jr nz,dr_none
+    push af
+    call drv_present            ; (A = H or L of the sector count)
+    jr z,dr_none_pop
+    pop af                      ; the drive again for DESC_SEL
     push bc
     call DESC_SEL
     pop bc
     set 7,(ix+0)                ; "motor running" as after the original check
     or #FF
     ret
-dr_none:
+dr_none_pop:
+    pop af
     xor a
     ret
 
@@ -187,9 +196,8 @@ sec_format:
 sec_op:
     ld (op),a
     ld (SAVED_IX),ix
-    ld a,(DRIVE)
-    and a
-    jp nz,sop_nodisk
+    call act_sel                ; IX, img_secs, page_table, sd_* of drive #3E6B
+    jp z,sop_nodisk
     push hl
     ld e,(ix+3)                 ; sectors per track
     ld d,0
@@ -297,6 +305,98 @@ op:         db 0
     ASSERT $ <= #2800, driver code overlaps the loader data
 
 ; ---------------------------------------------------------------------------
+; Drive B: (and the drive switch).  The driver works on one set of tables,
+; img_secs .. page_table, sd_n .. sd_blk and sd_mapp, which belong to drive
+; cur_drv; the other drive's set is kept here and swapped in by drv_sel.
+; ---------------------------------------------------------------------------
+    ORG #2610
+oth_tab:    ds 108              ; = img_secs, fix_pg2, fix_pg7, page_table
+oth_sd:     ds 3                ; = sd_n, sd_cs, sd_blk
+oth_mapp:   dw SD_MAP_B         ; = sd_mapp
+cur_drv:    db 0                ; drive whose tables are in use
+
+; A = drive -> NZ if it holds an image (keeps all other registers); only
+; A: (0) and B: (1) can
+drv_present:
+    cp 2
+    jr nc,drv_none
+    push hl
+    ld hl,cur_drv
+    cp (hl)
+    ld hl,(img_secs)
+    jr z,.t
+    ld hl,(oth_tab)
+.t: ld a,h
+    or l
+    pop hl
+    ret
+
+drv_none:
+    xor a                       ; Z: no image
+    ret
+
+; The sector ops work on the active drive #3E6B, not on the incoming IX: the
+; original ops (DRWSU #2493) select the drive from #3E6B and set IX from it.
+; Programs reach the sector loop with any IX (X-MAGAZIN: #3E0C while A: is
+; active).  -> IX = its descriptor, its tables in use; NZ if it holds an image.
+; Keeps BC, DE, HL.
+act_sel:
+    push bc
+    ld a,(DRIVE)
+    call DESC_SEL
+    pop bc
+    ld a,(DRIVE)
+
+; A = drive (0 = A:, 1 = B:) -> its tables in use; NZ if it holds an image.
+; Keeps BC, DE, HL.  Other drives: Z, the tables stay as they are.
+drv_sel:
+    cp 2
+    jr nc,drv_none
+    push hl
+    ld hl,cur_drv
+    cp (hl)
+    jr z,.same
+    ld (hl),a
+    push de
+    push bc
+    ld hl,img_secs
+    ld de,oth_tab
+    ld bc,108
+    call .swap
+    ld hl,sd_n
+    ld de,oth_sd
+    ld bc,3
+    call .swap
+    ld hl,sd_mapp
+    ld de,oth_mapp
+    ld bc,2
+    call .swap
+    pop bc
+    pop de
+.same:
+    ld hl,(img_secs)
+    ld a,h
+    or l
+    pop hl
+    ret
+.swap:
+    ld a,(de)
+    push af
+    ld a,(hl)
+    ld (de),a
+    pop af
+    ld (hl),a
+    inc hl
+    inc de
+    dec bc
+    ld a,b
+    or c
+    jr nz,.swap
+    ret
+
+    ASSERT $ <= #2700, drive B tables overlap the driver
+
+; ---------------------------------------------------------------------------
 ; Data filled in by the loader
 ; ---------------------------------------------------------------------------
     ORG #2800
@@ -313,10 +413,26 @@ cur_lsn:    dw 0
 cur_buf:    dw 0
 sd_arg:     ds 4
 sd_sp:      dw 0                ; sector op's SP while sd_put runs
-SD_STACK    equ #2900           ; private stack #2880-#28FF
-    ASSERT $ <= #2880, loader data overlaps the sd_put stack
+sd_mapp:    dw SD_MAP           ; extent table of the current drive
+menu_pg:    db 0                ; Next page with the D80 menu (dot/menu.asm)
+menu_iff:   db 0                ; menu: 1 = interrupts were on
+menu_act:   db 0                ; menu: what to do on return
+menu_usp:   dw 0                ; menu: the program's SP
+m_af:       dw 0                ; menu: the program's registers
+m_bc:       dw 0
+m_de:       dw 0
+m_hl:       dw 0
+m_ix:       dw 0
+m_iy:       dw 0
+m_af2:      dw 0
+m_bc2:      dw 0
+m_de2:      dw 0
+m_hl2:      dw 0
+SD_STACK    equ #2900           ; private stack #28A0-#28FF
+    ASSERT $ <= #28A0, loader data overlaps the sd_put stack
 SD_MAP      equ #3000           ; DISK_FILEMAP extents of the image file
 SD_MAX      equ 128             ; 6 bytes each: up to #32FF
+SD_MAP_B    equ #3480           ; the same for drive B: (up to #377F)
 
     ORG #2900
 ; write the sector cur_lsn to the SD card (user pages are back, the stack is
@@ -329,7 +445,7 @@ sd_put:
     scf
     jr z,.x
     ld hl,(cur_lsn)
-    ld ix,SD_MAP
+    ld ix,(sd_mapp)
     call sd_find
     jr c,.x
     ld hl,0                     ; format: #E5 fill
@@ -398,6 +514,34 @@ snap_entry0_x:
     ld a,l
     cp low snap_win_end
     jr nz,.win
+    ; A short press is SNAP.  CAPS SHIFT held, or DRIVE still held after
+    ; about 0.4 s (NextReg #10 bit 1), opens the menu instead.
+    push bc                     ; (8 bytes below SP, as MDOS's #0068)
+    ld a,#FE
+    in a,(#FE)
+    rra                         ; CAPS SHIFT
+    jr nc,.menu
+    ld de,HOLD_LOOPS
+.hold:
+    ld bc,#243B
+    ld a,#10
+    out (c),a
+    inc b
+    in a,(c)
+    and #02                     ; DRIVE button
+    jr z,.snap
+    dec de
+    ld a,d
+    or e
+    jr nz,.hold
+.menu:
+    pop bc
+    pop de
+    pop af
+    pop hl                      ; all registers the program's, (SP) = its PC
+    jp menu_entry
+.snap:
+    pop bc
     pop de
     ld hl,#0067
 .mdos:
@@ -434,7 +578,100 @@ snap_win_out:                   ; ... and leaving
 snap_win_end:
     ASSERT high snap_win == high snap_win_end, snap_win must not cross a 256-byte page
 
-    ASSERT $ <= #3800, SNAP code overlaps the MDOS RAM
+HOLD_LOOPS  equ 16000           ; x about 90 T = 0.4 s at 3.5 MHz
+
+; ---------------------------------------------------------------------------
+; The D80 menu (DRIVE held).  MDOS is paged in, interrupts are off (NMI) and
+; SNAP is off.  The menu code runs from its own Next page in MMU slot 7 with
+; its stack there (dot/menu.asm); the program's registers stay on its stack.
+; ---------------------------------------------------------------------------
+menu_entry:                     ; all registers the program's, (SP) = its PC
+    ld (m_hl),hl                ; registers -> MDOS B (the program's stack is
+    push af                     ; used only as by MDOS's own SNAP handler)
+    pop hl
+    ld (m_af),hl
+    ld a,i                      ; P/V = IFF2 = interrupt state before the NMI
+    ld a,0
+    jp po,.iff
+    inc a
+.iff:
+    ld (menu_iff),a
+    ld (m_bc),bc
+    ld (m_de),de
+    ld (m_ix),ix
+    ld (m_iy),iy
+    exx
+    ld (m_bc2),bc
+    ld (m_de2),de
+    ld (m_hl2),hl
+    exx
+    ex af,af'
+    push af
+    pop hl
+    ld (m_af2),hl
+    ex af,af'
+    ld (menu_usp),sp
+    ld a,(menu_pg)
+    nextreg #57,a
+    ld sp,0                     ; stack at the top of the menu page
+    call MENU_CODE              ; -> A = 0 back, 1 snapshot, 2 reset
+    ld (menu_act),a
+    ld a,(fix_pg7)
+    nextreg #57,a               ; the program's page back before its stack
+    ld sp,(menu_usp)
+    ld hl,(m_af2)
+    push hl
+    ex af,af'
+    pop af
+    ex af,af'
+    exx
+    ld bc,(m_bc2)
+    ld de,(m_de2)
+    ld hl,(m_hl2)
+    exx
+    ld ix,(m_ix)
+    ld iy,(m_iy)
+    ld bc,(m_bc)
+    ld de,(m_de)
+    ld a,(menu_act)
+    dec a
+    jr z,.snap
+    dec a
+    jr z,.reset
+    ld a,(menu_iff)             ; back to the program
+    and a
+    ld hl,(m_af)
+    push hl
+    ld hl,(m_hl)
+    jr z,.di
+    pop af
+    ei
+    jp PAGE_OUT
+.di:
+    pop af
+    jp PAGE_OUT
+.snap:                          ; as a short press: MDOS saves SNAPSHOTnn
+    ld hl,#0067
+    push hl                     ; (SP) = #0067, then the program's PC
+    ld hl,(m_af)
+    push hl
+    pop af
+    ld hl,(m_hl)
+    jp #0068
+.reset:                         ; cold start of MDOS and the 48K ROM
+    ld hl,#3EEF                 ; spoil the warm-start signature
+    ld b,8
+.r: ld (hl),#55
+    inc hl
+    djnz .r
+    ld sp,#5C00                 ; any RAM: the 48K ROM sets its own stack
+    ld hl,0
+    push hl                     ; (SP) <> #0067: not a SNAP for snap_entry0
+    jp #0000
+
+MENU_CODE   equ #E000
+
+    ASSERT $ <= SD_MAP_B, SNAP code overlaps the drive B extent table
 
     MMU 0, 0
     SAVEBIN "build/mda.bin", #0000, #2000

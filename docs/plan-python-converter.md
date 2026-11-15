@@ -1,4 +1,4 @@
-# Plan: Option 1, part 1 — Python converter (status 2026-11-14)
+# Plan: Option 1, part 1 — Python converter (status 2026-11-15)
 
 ## Goal
 Use the sample images in `images/` to learn the real MDOS structure. Then write Python that extracts MDOS files and converts them into formats the ZX Spectrum Next loads, and check that the results run.
@@ -38,9 +38,10 @@ Use the sample images in `images/` to learn the real MDOS structure. Then write 
       - Harness: undocumented IXh/IXl instructions; `HALT` with interrupts disabled is recorded as a hang.
 
 ## Next
-- Test on ZEsarUX `--machine TBBlue` with a NextZXOS SD image, then on real Next hardware.
+Done since:
+- Option 1, part 2, the `.d80` dot command ([plan-d80-dot-command.md](plan-d80-dot-command.md)), verified on a real Next. It runs the programs the converter cannot handle (MDOS menus, multi-load games, `CAT`/`MOVE`/`SAVE *`) with the real MDOS. So there is no need to analyse the MDOS calls of multi-load programs one by one.
+
+Still open (optional, lower priority now that `.d80` exists):
 - Finish the ZEsarUX check: the 15 remaining programs (`--resume`, at most 4 parallel instances), plus the 128K programs on `--machine 128k`.
 - Check a sample of the "blank" and "reset" programs against Fuse + MDOS.
-- Find programs that really load from disk at runtime (multi-load); for those, analyse the MDOS calls (statement handlers in the `#05FF` table).
 - Batch-classify all 314 program tapes with the harness: blocks loaded and whether the screen changed.
-- Option 1, part 2: the `.D80` dot command for the Next.

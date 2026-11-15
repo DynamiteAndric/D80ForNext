@@ -3,7 +3,8 @@
     python tools/preview_d80.py MDOS.rom 48.rom OUTDIR IMAGE.d80 [--keys R,ENTER,WAIT4,D] [--frames 600]
 
 Keys are typed after boot (150 frames). ``A+B`` presses keys together,
-``WAITn`` waits n seconds (50 frames each). Screens are written every
+``WAITn`` waits n seconds (50 frames each), ``SNAP`` presses the DRIVE
+button briefly and ``HOLD`` holds it (the D80 menu). Screens are written every
 ``--every`` frames as OUTDIR/<image>_<tag>_<n>.png. The run reports
 invariant violations of the paging design (see d80tool.nextmmu).
 """
@@ -41,6 +42,9 @@ def main() -> None:
         for k in a.keys.split(","):
             if k.upper().startswith("WAIT"):
                 m.run_frames(int(k[4:]) * 50)
+            elif k.upper() in ("SNAP", "HOLD"):
+                m.press_snap(hold=400_000 if k.upper() == "HOLD" else 50)
+                m.run_frames(30)
             else:
                 m.type_keys([k.split("+")])
         n = 0

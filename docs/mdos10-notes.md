@@ -95,6 +95,14 @@ Logical sector = `B`·spt + `C`, which is the linear sector order of the `.d80` 
 
 **MDOS RAM.** All of `#3800`–`#3FFF` is in use: buffers at `#3800`/`#3A00`/`#3C00`, drive descriptors at `#3E00`, and system variables at `#3E60`–`#3EFF`. There is no RETN anywhere in MDOS.
 
+**Drive in file names.** `#10E2` looks at the part of a name before `:` (copied to `#3E80`). A single letter A–D selects drive 0–3 (`#3E6B`); anything else is matched against the disk names in the drives (`#1F16` scans drives 0–3). So `LOAD *"b:name"` and `CAT "b:"` use drive B:.
+
+**FORMAT (`#13E4`–`#147F`).** Builds the boot sector in the buffer at `#3C00`:
+- zeros; at 128, the 48 bytes from `#3E00` (drive descriptors); at 176, the 12-byte descriptor of the drive being formatted;
+- the name from `#3E8A` at 192; two `LD A,R` bytes at 202–203 (disk ID; there is a `HALT` between them); `SDOS` from `#0F10` at 204.
+
+It writes the boot sector, then FAT sectors 1–5 filled with `#DD`, and marks the data sectors free through `#1D1E` (set a FAT entry). Directory and data keep the `#E5` format fill. `d80tool.image.blank_image` and `.d80 -n` reproduce this. MDOS 1.0 initialises only drives 0 and 1 (`#2273 CP #02`); the default descriptors at `#0EF8` are 2 × 12 bytes.
+
 **SNAP patch points (`.d80`).**
 - `#0066` `JP (IX)` becomes `RST 0`; there is no FDC NMI any more.
 - `#0000` `NOP/JR #0068` becomes `JP snap_entry0`.

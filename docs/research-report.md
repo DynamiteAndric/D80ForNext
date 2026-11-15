@@ -116,8 +116,11 @@ Sources: SpectrumNext FPGA `cores/zxnext/nextreg.txt`; Klive IDE book, appendice
 
 - **Resolved: layout.** The directory occupies logical sectors **6–13**. Images are linear in logical sector order. The FAT holds **341 entries per sector**: 170 triplets plus one entry in the last 2 bytes, with filler nibble 0xD. See README.md.
 - **Resolved: snapshot format.** An `S` file is a memory dump of 0x3F80–0xFFFF. The register block sits at 0x3FE8–0x3FFF, following the MDOS 2.1 `NMI` routine, and PC is on the stack. Compressed snapshots (SNAPSHOT-PACKER v1.2) are self-extracting stubs.
-- **Open: multi-load software.** It is common on the sample disks: game loaders that call machine code using MDOS, and disk menus. This still argues for option 3 for full compatibility.
-- **Option 3 implemented (2026-11-15):** the `.d80` dot command runs the real MDOS 1.0 using DivMMC automap (NextReg `#B8`–`#BB`), with the unmodified 48K ROM in the alternate ROM and the disk image in RAM pages. See [plan-d80-dot-command.md](plan-d80-dot-command.md). It has been verified in a Python model; a real-hardware test is still pending.
+- **Resolved: multi-load software.** It is common on the sample disks: game loaders that call machine code using MDOS, and disk menus. Option 3 (below) runs it.
+- **Option 3 implemented (2026-11-15):** the `.d80` dot command runs the real MDOS 1.0 using DivMMC automap (NextReg `#B8`–`#BB`), with the unmodified 48K ROM in the alternate ROM and the disk image in RAM pages. See [plan-d80-dot-command.md](plan-d80-dot-command.md). It works on a real Next (confirmed 2026-11-15). Since then it also has:
+  - SD write-through (`-w`, [plan-d80-sd-write.md](plan-d80-sd-write.md));
+  - the SNAP button on the Next's DRIVE button ([plan-d80-snap.md](plan-d80-snap.md)).
+- **Open:** loading only the used sectors on 1 MB machines. 128K mode and MDOS 2.0 (D80 v2) are not planned. See [plan-d80-dot-command.md](plan-d80-dot-command.md).
 
 ## Sources
 

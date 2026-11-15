@@ -29,6 +29,7 @@ IMAGES = {"mda": 0x0000, "mdb": 0x2000}  # name -> base address
 DATA_SYMBOLS = ("img_secs", "page_table", "fix_pg2", "fix_pg7",
                 "sd_on", "sd_n", "sd_cs", "sd_blk", "SD_MAP", "SD_MAX",
                 "nr06_on", "nr06_off0", "nr06_off8",
+                "oth_tab", "oth_sd", "cur_drv", "SD_MAP_B", "menu_pg",
                 "sd_put", "op", "cur_lsn", "cur_buf",
                 "snap_entry0_x", "snap_entry8_j", "page_out_j")  # from sd_put on: tests only
 
@@ -108,6 +109,8 @@ def main() -> None:
     n = sum(len(bytes.fromhex(h)) for recs in data["images"].values() for _, h in recs)
     print(f"patches: {n} bytes in {sum(len(r) for r in data['images'].values())} runs, "
           f"-> {BUILD / 'patches.json'}")
+    sjasm("--sym=build/menu.sym", "menu.asm")
+    print(f"menu: {BUILD / 'menu.bin'} ({(BUILD / 'menu.bin').stat().st_size} bytes)")
     if (DOT / "d80.asm").exists():
         sjasm("--sym=build/d80.sym", "--lst=build/d80.lst", "d80.asm")
         print(f"dot command: {BUILD / 'D80'} ({(BUILD / 'D80').stat().st_size} bytes)")

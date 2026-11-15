@@ -19,6 +19,7 @@ python -m d80tool basic images/021.d80 HEXAGONIA      # BASIC listing
 python -m d80tool extract images/*.d80 -o extracted   # raw files
 python -m d80tool convert images/*.d80 -o out [--sna] # .z80 / .tap + report.md per disk
 python -m d80tool snap SNAPSHOT00.S -o out [--sna]    # standalone SNAP-button files -> .z80/.sna
+python -m d80tool new blank.d80 [--name X]           # blank formatted image (*.d40: 360K D40, else 720K D80)
 ```
 
 `convert` writes `out/<disk>/report.md` for each disk. It holds every file, every BASIC listing, the files each program tape contains, and hints when a loader still needs MDOS (for example `OUT 145`/`153`, `CAT`, or `*` commands that were left in place).
@@ -34,8 +35,12 @@ The `.d80` dot command boots a disk image on the Next with the real **MDOS 1.0**
 .d80 -r /my/mdos.rom -4 /my/48.rom game.d80
 .d80 "c:/my disks/game.d80"             ; quotes allow spaces and ':'
 .d80 -w /d80/021.d80                    ; disk writes go back to the image file on SD
-.d80 -t /d80/021.d80                    ; -w plus a write self-test before MDOS starts
+.d80 -w -n /d80/new.d80                 ; create a blank formatted disk, then use it
+.d80 -w /d80/021.d80 /d80/data.d80      ; second image in drive B:
+.d80 -w /d80/021.d80 -n /d80/data.d80   ; ... created blank first
 ```
+
+While loading, `.d80` clears the screen and shows a window in the style of the 128 menu. It reports each step: the ROM checks, then each image by name with a progress bar, and `New disk …` when `-n` creates one. When all is ready it shows `Press any key` and starts MDOS on the next key press.
 
 **Writing to the SD card (`-w`).** Without `-w`, disk writes change only the RAM copy. With `-w`:
 - `.d80` asks esxDOS where the image file lies on the card (`DISK_FILEMAP`).
@@ -44,7 +49,6 @@ The `.d80` dot command boots a disk image on the Next with the real **MDOS 1.0**
 - If the card refuses a write, MDOS shows `Disk is write protected (Retry = R)`.
 - An image in more than 128 fragments is refused.
 
-`-t` also writes the last image sector inverted, reads it back, restores it and reads it back again before MDOS starts. Use it for a first test on a new card.
 
 To start images from the NextZXOS browser, add these lines to the end of `/nextzxos/browser.cfg` (the file `dist/browser-d80.cfg` holds them). Don't replace the existing file:
 ```
@@ -53,7 +57,22 @@ D40:.d80 -w "|"
 ```
 Programs started from the browser then save to the image (`-w`). Leave out `-w` for read-only starts. If the file already has `D80`/`D40` lines, replace them.
 
-**SNAP button.** The Next's **DRIVE** button (DivMMC NMI, hotkey F10) works as the Didaktik SNAP button:
+**Drive B: (second image).** A second image name goes into drive B:. MDOS 1.0 has exactly two drives, so a third name is a usage error. MDOS addresses B: by the letter before a colon, for example `CAT "b:"`, `LOAD *"b:name"` and `SAVE *"b:name" CODE 16384,6912`. Without a drive letter it uses the current drive (A: after the start). With `-w`, writes go to the image file of the drive they are for. A 720K image needs 90 pages, so two images need 180 pages of free RAM (a 2 MB Next).
+
+**Blank disk (`-n`).** `-n` creates the image file as a freshly formatted disk, laid out as MDOS 1.0 FORMAT writes it: a 360K D40 disk (40 tracks) for a `*.d40` name, otherwise a 720K D80 disk. The disk name is the file name without its extension, up to 10 characters. If the file already exists, `.d80` stops with `File exists` and changes nothing. `-n` applies to the image name that follows it. Use it together with `-w`, otherwise the saves are lost at reset. `python -m d80tool new` writes the same image on a PC.
+
+**SNAP button and D80 menu.** The Next's **DRIVE** button (DivMMC NMI, hotkey F10) works as the Didaktik SNAP button. A short press saves a snapshot. Holding DRIVE for about half a second, or pressing it with CAPS SHIFT held, opens the **D80 menu** instead:
+
+| Item | Key | Action |
+|---|---|---|
+| Swap A: and B: | `X` | swap the disks in the two drives |
+| Snapshot | `S` | as a short press |
+| Reset | `R` | cold start of MDOS and the 48K ROM; the disks stay |
+| Back | `SPACE` | back to the program, which continues unchanged |
+
+The menu looks like the ZX Spectrum 128 / NextZXOS menu: a window with the rainbow title bar, the disk names in A: and B:, and the items with a cyan selection bar. Choose an item with the cursor keys (`7`/`6` or `Q`/`A`) and `ENTER`, or press its key. The menu saves and restores the part of the screen it uses, and keeps the program's registers in MDOS RAM. A swap is refused while MDOS still holds an unwritten FAT, which cannot happen between commands. MDOS reads FAT and directory again after a change. Disks addressed by their *name* (`LOAD *"DiskName:file"`) are not looked up again; use the drive letter.
+
+What a short press does:
 - MDOS saves the running program as `SNAPSHOTnn` (type `S`, 49,280 bytes) to the current drive, and the program continues.
 - Without `-w`, the file goes only to the RAM copy of the image. With `-w`, it is written to the image on the SD card.
 - As on the Didaktik, the button is ignored while MDOS itself runs (for example during `LOAD *` or `CAT`).
@@ -79,11 +98,12 @@ Details are in [docs/plan-d80-dot-command.md](docs/plan-d80-dot-command.md) and 
 
 Limits:
 - Without `-w`, disk writes change only the RAM copy.
-- 48K only.
+- 48K only, with MDOS 1.0. 128K mode and MDOS 2.0 are not planned.
+- At most two drives (A:, B:), as in MDOS 1.0.
 - The DRIVE button no longer opens the NextZXOS NMI menu.
 - A 720K image needs 90 free 8K pages.
 - Leave with a hard reset.
-- NextReg `#7F` holds the last progress marker: `#E3` = MDOS started; bit 7 set = `.d80` failed at step `marker & #7F` (`#20`–`#25` are the `-w`/`-t` steps).
+- NextReg `#7F` holds the last progress marker: `#07` = waiting for the key, `#E3` = MDOS started; bit 7 set = `.d80` failed at step `marker & #7F` (`#20`–`#22` are the `-w` steps).
 
 Checking without hardware:
 ```sh
@@ -91,7 +111,7 @@ python tools/preview_d80.py MDOS.rom 48.rom out/_d80 images/021.d80 --keys R,ENT
 python tools/zesarux_next_check.py out/_next --mdos MDOS.rom --image images/021.d80           # ZEsarUX TBBlue
 ```
 
-ZEsarUX 13 runs the dot command up to `JP 0`, but it does not emulate the programmable DivMMC entry points (NextReg `#B8`–`#BB`). Checked on a real Next: it works, and so does writing with `-w`/`-t`.
+ZEsarUX 13 runs the dot command up to `JP 0`, but it does not emulate the programmable DivMMC entry points (NextReg `#B8`–`#BB`). Checked on a real Next: it works, and so does writing with `-w`.
 
 ## Checking results without an emulator
 
