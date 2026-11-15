@@ -59,12 +59,17 @@ sd_find:
     or a
     ret
 
-; select the card and wait until it is ready (MISO high)
+; select the card and wait until it is ready (MISO high), for up to 4 x 64K
+; reads (about 4 s at 3.5 MHz: a card may stay busy long after a write)
 sd_begin:
     ld a,#FF
     out (SD_SPI),a              ; 8 clocks with CS high
     ld a,(sd_cs)
     out (SD_CS_PORT),a
+    in a,(SD_SPI)               ; the Next's port returns the byte of the previous
+                                ; exchange: here the #FF clocked while deselected,
+                                ; which says nothing about a card still busy
+    ld c,4
     ld de,0
 .w: in a,(SD_SPI)
     cp #FF
@@ -72,6 +77,8 @@ sd_begin:
     dec de
     ld a,d
     or e
+    jr nz,.w
+    dec c
     jr nz,.w
     scf
     ret
@@ -165,12 +172,13 @@ sd_write:
     otir
     otir
     jr .crc
-.fill:
-    ld b,0
-    ld a,#E5
-.f: out (SD_SPI),a
-    out (SD_SPI),a
-    djnz .f
+.fill:                          ; as OTIR does: OUT (C) with B on the upper
+    ld bc,SD_SPI                ; address byte, 25 T per byte (OTIR: 21 T).
+    ld a,#E5                    ; Back-to-back OUT (#EB),A (11 T apart, #E5 on
+.f: out (c),a                   ; A8-A15) got no data response from the card
+    djnz .f                     ; on a real Next
+.f2:out (c),a
+    djnz .f2
 .crc:
     ld a,#FF
     out (SD_SPI),a

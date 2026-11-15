@@ -98,6 +98,8 @@ SAVE_TEST = [["S"], ["SYM", "B"], ["SYM", "P"], ["T"], ["E"], ["S"], ["T"], ["SY
 
 
 CAT = [["CAPS", "SYM"], ["SYM", "9"], ["ENTER"]]
+FORMAT_TESTIK = [["CAPS", "SYM"], ["SYM", "0"], ["SYM", "P"], ["A"], ["SYM", "Z"],   # FORMAT "a:testik"
+                 ["T"], ["E"], ["S"], ["T"], ["I"], ["K"], ["SYM", "P"], ["ENTER"]]
 D80_BIN = ROOT / "dot" / "build" / "D80"
 D80_SYM = ROOT / "dot" / "build" / "d80.sym"
 
@@ -648,7 +650,7 @@ class TestSdWrite(unittest.TestCase):
     EXTENTS_B = [(6000, 700), (7000, 740)]                # image B: on the same card
 
     def machine(self, block=True, pipelined=False, write_protect=False, image=None,
-                image_b=None):
+                image_b=None, busy=0):
         from d80tool.mdospatch import SdMap
         from d80tool.nextmmu import DidaktikNext, SpiSdCard
         image = image or IMAGE.read_bytes()
@@ -665,7 +667,7 @@ class TestSdWrite(unittest.TestCase):
                 pos += n
             maps.append(SdMap([(s * unit, n) for s, n in extents], 2 if block else 0))
         self.card = SpiSdCard(card, block_addr=block, pipelined=pipelined,
-                              write_protect=write_protect)
+                              write_protect=write_protect, busy=busy)
         self.has_b = image_b is not None
         m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), image, sd=maps[0], card=self.card,
                          image_b=image_b, sd_b=maps[1])
@@ -706,6 +708,37 @@ class TestSdWrite(unittest.TestCase):
         m.type_keys([["R"]])
         m.run_frames(150)
         self.assertEqual([t for t in m.screen_text() if t.strip()][-1], "0 OK, 0:1")
+        self.check_card(m)
+
+    def test_format_command(self):
+        """FORMAT "a:testik": MDOS calls the format op once per track (B = track,
+        C = track count) and verifies with a direct read that must return B = 2."""
+        self.format_and_save(self.machine())
+
+    def test_format_busy_card_pipelined_port(self):
+        """Back-to-back writes on the Next's SPI port (a read returns the byte of
+        the previous exchange) to a card that stays busy after each write: the
+        driver must not send CMD24 before the card is ready."""
+        self.format_and_save(self.machine(pipelined=True, busy=300))
+
+    def format_and_save(self, m):
+        from d80tool.image import MdosImage
+        m.type_keys(FORMAT_TESTIK)
+        m.run_frames(100)
+        m.type_keys([["P"]])                                # Proceed
+        for _ in range(20):
+            m.run_frames(100)
+            if "0 OK, 0:1" in m.screen_text()[-1] or "Retry" in "".join(m.screen_text()):
+                break
+        screen = [t for t in m.screen_text() if t.strip()]
+        self.assertEqual(screen[-1], "0 OK, 0:1", screen)
+        self.assertIn("Total capacity is  730112 Bytes.", screen)
+        img = m.image_bytes()
+        self.assertEqual(img[192:198], b"testik")
+        self.assertEqual(img[14 * 512:], b"\xE5" * (len(img) - 14 * 512))
+        self.assertEqual(MdosImage(img).entries(), [])
+        self.check_card(m)
+        self.assertEqual(self.save(m)[-1], "0 OK, 0:1")     # the new disk is usable
         self.check_card(m)
 
     def test_format_writes_e5(self):
