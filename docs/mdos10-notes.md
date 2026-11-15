@@ -97,7 +97,7 @@ Logical sector = `B`·spt + `C`, which is the linear sector order of the `.d80` 
 
 **Drive in file names.** `#10E2` looks at the part of a name before `:` (copied to `#3E80`). A single letter A–D selects drive 0–3 (`#3E6B`); anything else is matched against the disk names in the drives (`#1F16` scans drives 0–3). So `LOAD *"b:name"` and `CAT "b:"` use drive B:.
 
-**FORMAT (`#13E4`–`#147F`).** Builds the boot sector in the buffer at `#3C00`:
+**FORMAT (`FORMAT "a:name"`, handler `#1345`).** It asks `(Proceed = P)`, copies descriptor bytes 5–7 to 1–3, then calls the format op `#229C` once per track (`#1394`: B = track 0…tracks·sides−1, C = that count, D = 1); the op at `#23D8` writes a whole track (WD Write Track, track image built at `#4000`). It then verifies every sector with a direct `CALL #236A` (`#13B8`), which must return B = 2 (class "read"); C bits `#18` mark a bad block. `#13E4`–`#147F` builds the boot sector in the buffer at `#3C00`:
 - zeros; at 128, the 48 bytes from `#3E00` (drive descriptors); at 176, the 12-byte descriptor of the drive being formatted;
 - the name from `#3E8A` at 192; two `LD A,R` bytes at 202–203 (disk ID; there is a `HALT` between them); `SDOS` from `#0F10` at 204.
 
