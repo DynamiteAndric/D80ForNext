@@ -170,3 +170,60 @@ class MdosImage:
         except MdosError as e:
             return str(e)
         return None
+
+
+# ---- blank (formatted) image -------------------------------------------------
+# What MDOS 1.0 FORMAT (#13E4) writes: a zeroed boot sector with the drive
+# descriptors from #3E00 at 128 (the most common state on the sample disks),
+# the descriptor of the formatted drive at 176 (flags, 2 sides, 80 tracks,
+# 9 sectors), the disk name at 192, two random bytes at 202 and "SDOS" at 204;
+# the FAT filled with #DD and the data sectors marked free; everything else
+# (directory and data) is the #E5 format fill.
+BLANK_DESCRIPTORS = bytes.fromhex(
+    "0118500900185e0900000000" "0118500900185e0900000000"
+    "01185e0900185e0900000000" "01185e0900185e0900000000"
+    "0118500900185e0900000000")
+BLANK_SECTORS = 1440                     # D80: 80 tracks x 2 sides x 9 sectors
+DATA_FIRST_SECTOR = DIR_FIRST_SECTOR + 8
+
+
+def blank_name(name: str) -> bytes:
+    """Disk name field: up to 10 characters, padded with spaces."""
+    raw = name.encode("latin-1", "replace")[:10]
+    return raw + b" " * (10 - len(raw))
+
+
+def set_fat(data: bytearray, n: int, value: int) -> None:
+    sec, k = divmod(n, FAT_ENTRIES_PER_SECTOR)
+    base = (FAT_FIRST_SECTOR + sec) * SECTOR_SIZE
+    if k == FAT_ENTRIES_PER_SECTOR - 1:
+        data[base + 510] = value & 0xFF
+        data[base + 511] = ((value >> 8) << 4) | (data[base + 511] & 0x0F)
+        return
+    o = base + (k // 2) * 3
+    if k % 2 == 0:
+        data[o] = value & 0xFF
+        data[o + 1] = ((value >> 8) << 4) | (data[o + 1] & 0x0F)
+    else:
+        data[o + 2] = value & 0xFF
+        data[o + 1] = (data[o + 1] & 0xF0) | (value >> 8)
+
+
+def blank_image(name: str = "NoNameDisk", disk_id: bytes = b"\x00\x00",
+                tracks: int = 80) -> bytes:
+    """A freshly formatted image, as MDOS 1.0 FORMAT leaves it: 80 tracks =
+    720K D80, 40 tracks = 360K D40 (2 sides, 9 sectors each)."""
+    n_secs = tracks * 2 * 9
+    data = bytearray(b"\xE5" * (n_secs * SECTOR_SIZE))
+    data[:SECTOR_SIZE] = bytes(SECTOR_SIZE)
+    data[128:188] = BLANK_DESCRIPTORS
+    data[178] = tracks                   # the formatted drive's descriptor
+    data[192:202] = blank_name(name)
+    data[202:204] = disk_id[:2]
+    data[204:208] = SIGNATURE
+    fat = slice(FAT_FIRST_SECTOR * SECTOR_SIZE, DIR_FIRST_SECTOR * SECTOR_SIZE)
+    data[fat] = b"\xDD" * (fat.stop - fat.start)
+    for n in range(DATA_FIRST_SECTOR, n_secs):
+        set_fat(data, n, FAT_FREE)
+    return bytes(data)
+

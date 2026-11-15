@@ -12,11 +12,18 @@ the normal Next SD card distribution.
 
 Usage (NextBASIC or the command line):
 
+  .d80 [-w] [-r mdos.rom] [-4 48.rom] [-n] a.d80 [[-n] b.d80]
+
   .d80 /d80/021.d80
+  .d80 -w /d80/021.d80                   disk writes go back to the image file
+  .d80 -w /d80/021.d80 /d80/data.d80     a second image in drive B:
+  .d80 -w /d80/021.d80 -n /d80/data.d80  ... created as a blank disk first
+  .d80 -w -n /d80/small.d40              a blank 360K D40 disk (*.d40)
   .d80 -r /path/mdos.rom -4 /path/48.rom /path/game.d80
-  .d80 "c:/my disks/game.d80"      (quotes allow spaces and ':')
-  .d80 -w /d80/021.d80             disk writes go back to the image file
-  .d80 -t /d80/021.d80             -w plus a write self-test first
+  .d80 "c:/my disks/game.d80"            (quotes allow spaces and ':')
+
+While loading, a window shows each step with a progress bar. When all is
+ready it says "Press any key"; the next key starts MDOS.
 
 Writing to the SD card (-w):
   Without -w, disk writes change only the RAM copy and are lost on reset.
@@ -24,9 +31,24 @@ Writing to the SD card (-w):
   card (only into the file's own sectors; the FAT is never changed).
   Before starting, .d80 checks where the file lies on the card by reading
   sectors back. If a write fails, MDOS shows "Disk is write protected
-  (Retry = R)". -t also writes the last image sector inverted, reads it
-  back and restores it: use it for a first test. Keep a backup of images
-  you care about.
+  (Retry = R)". Keep a backup of images you care about.
+
+Blank disks (-n):
+  -n creates the image name that follows it as a freshly formatted disk:
+  360K D40 (40 tracks) for a *.d40 name, otherwise 720K D80. The disk name
+  is the file name (up to 10 characters). An existing file is never
+  overwritten: .d80 stops with "File exists".
+
+Drive B:
+  A second image goes into drive B:. In MDOS use the drive letter:
+  CAT "b:", LOAD *"b:name", SAVE *"b:name" CODE 16384,6912.
+
+SNAP button and D80 menu (the DRIVE button):
+  A short press saves a snapshot SNAPSHOTnn of the running program to the
+  current disk; the program goes on. LOAD *"SNAPSHOT00" loads it back.
+  Holding DRIVE (or CAPS SHIFT + DRIVE) opens the D80 menu: cursor keys
+  (7/6 or Q/A) and ENTER, or the keys X (swap A: and B:), S (snapshot),
+  R (reset) and SPACE (back to the program).
 
 Starting images from the NextZXOS browser:
   Add the lines from browser-d80.cfg to the end of /nextzxos/browser.cfg
@@ -42,9 +64,12 @@ Starting images from the NextZXOS browser:
 The Next becomes a 48K Spectrum with a Didaktik 80. Then use RUN (loads the
 "run" menu from disk), CAT, LOAD *"name" and so on.
 
-Limits: 48K only; no SNAP button; a 720K image needs 90 free 8K pages;
--w needs an image in at most 128 fragments. Leave with a hard reset.
-NextReg #7F holds the last progress marker: #E3 = MDOS started; bit 7 set
-= .d80 failed at step (marker AND #7F), #20-#25 are the -w/-t steps.
+Limits: 48K only, MDOS 1.0 only; at most two drives; a 720K image needs
+90 free 8K pages (two images: a 2 MB Next); -w needs an image in at most
+128 fragments. The DRIVE button no longer opens the NextZXOS NMI menu.
+Leave with a hard reset.
+NextReg #7F holds the last progress marker: #07 = waiting for the key,
+#E3 = MDOS started; bit 7 set = .d80 failed at step (marker AND #7F),
+#20-#22 are the -w steps.
 
 The MDOS ROM is copyrighted: do not redistribute this folder with it.

@@ -98,6 +98,191 @@ SAVE_TEST = [["S"], ["SYM", "B"], ["SYM", "P"], ["T"], ["E"], ["S"], ["T"], ["SY
 
 
 CAT = [["CAPS", "SYM"], ["SYM", "9"], ["ENTER"]]
+D80_BIN = ROOT / "dot" / "build" / "D80"
+D80_SYM = ROOT / "dot" / "build" / "d80.sym"
+
+
+class TestBlank(unittest.TestCase):
+    """-n / d80tool new: a blank image as MDOS 1.0 FORMAT writes it."""
+
+    def test_layout(self):
+        from d80tool.image import MdosImage, blank_image
+        b = blank_image("NoNameDisk", bytes([0x25, 0x25]))
+        im = MdosImage(b)
+        self.assertEqual(len(b), 737280)
+        self.assertEqual((im.tracks, im.sectors_per_track, im.sides), (80, 9, 2))
+        self.assertEqual(im.entries(), [])
+        self.assertEqual(im.disk_name, "NoNameDisk")
+        self.assertEqual([im.fat(n) for n in (0, 13)], [0xDDD, 0xDDD])
+        self.assertTrue(all(im.fat(n) == 0 for n in range(14, 1440)))
+        self.assertTrue(all(im.fat(n) == 0xDDD for n in range(1440, 1705)))
+        kompakt = ROOT / "images" / "036-KOMPAKT.d80"
+        if kompakt.exists():                    # formatted by MDOS, same disk id
+            self.assertEqual(b[:512], kompakt.read_bytes()[:512])
+
+    def test_layout_d40(self):
+        from d80tool.image import MdosImage, blank_image
+        b = blank_image("Small", tracks=40)
+        im = MdosImage(b)
+        self.assertEqual(len(b), 368640)                    # 360K
+        self.assertEqual((im.tracks, im.sectors_per_track, im.sides), (40, 9, 2))
+        self.assertEqual(im.entries(), [])
+        self.assertTrue(all(im.fat(n) == 0 for n in range(14, 720)))
+        self.assertTrue(all(im.fat(n) == 0xDDD for n in list(range(14)) + list(range(720, 1705))))
+
+    @unittest.skipUnless(D80_BIN.exists() and D80_SYM.exists(), "dot command not built")
+    def test_dot_command_writes_the_same(self):
+        """blank_sector in the dot command, run in the Z80 model, gives the
+        same sectors as blank_image (apart from the random disk id)."""
+        from d80tool.image import blank_image
+        sym = {}
+        for line in D80_SYM.read_text().splitlines():
+            name, _, val = line.partition(": EQU ")
+            if val:
+                sym[name] = int(val, 16)
+        for path, name, tracks in (("c:/d80/My Disk.d80", "My Disk", 80),
+                                   ("verylongdiskname.d80", "verylongdi", 80),
+                                   ("/x/.d80", "NoNameDisk", 80), ("new", "new", 80),
+                                   ("c:/d80/Small.D40", "Small", 40)):
+            mem = bytearray(0x10000)
+            dot = D80_BIN.read_bytes()
+            mem[0x2000:0x2000 + len(dot)] = dot
+            raw = path.encode() + b"\0"
+            mem[sym["name_img"]:sym["name_img"] + len(raw)] = raw
+            mem[sym["blk_d40"]] = tracks == 40          # (set by make_blank)
+            ref = blank_image(name, tracks=tracks)
+            for sec in list(range(16)) + [tracks * 18 - 1]:
+                cpu = Z80(mem)
+                cpu.sp = 0xFF00
+                cpu.push(0x0000)                # return to a HALT at 0
+                mem[0] = 0x76
+                cpu.pc, cpu.h, cpu.l = sym["blank_sector"], sec >> 8, sec & 0xFF
+                while cpu.pc != 0:
+                    cpu.step()
+                got = bytearray(mem[sym["sd_buf"]:sym["sd_buf"] + 512])
+                want = bytearray(ref[sec * 512:(sec + 1) * 512])
+                if sec == 0:
+                    got[202:204] = want[202:204] = b"??"
+                self.assertEqual(got, want, f"{path}: sector {sec}")
+
+    @unittest.skipUnless(D80_BIN.exists() and D80_SYM.exists() and MDOS.exists() and ROM48.exists(),
+                         "dot command or ROMs not present")
+    def test_dot_command_crc(self):
+        """crc_init + crc_add (table-driven) in the Z80 model give zlib's CRC32,
+        also when the data comes in several pieces (as read_page adds it)."""
+        import time
+        import zlib
+        sym = {}
+        for line in D80_SYM.read_text().splitlines():
+            name, _, val = line.partition(": EQU ")
+            if val:
+                sym[name] = int(val, 16)
+        for data, pieces in ((MDOS.read_bytes(), (0x2000, 0x1800)),
+                             (ROM48.read_bytes(), (0x2000, 0x2000)), (b"123456789", (9,))):
+            mem = bytearray(0x10000)
+            dot = D80_BIN.read_bytes()
+            mem[0x2000:0x2000 + len(dot)] = dot
+            mem[0x8000:0x8000 + len(data)] = data
+            mem[0] = 0x76
+
+            def call(addr, hl=0, bc=0):
+                cpu = Z80(mem)
+                cpu.sp = 0xFF00
+                cpu.push(0x0000)
+                cpu.pc, cpu.hl, cpu.bc = addr, hl, bc
+                while cpu.pc != 0:
+                    cpu.step()
+                return cpu.steps
+            call(sym["crc_init"])
+            pos, steps = 0x8000, 0
+            for n in pieces:
+                steps += call(sym["crc_add"], pos, n)
+                pos += n
+            got = int.from_bytes(mem[sym["crc"]:sym["crc"] + 4], "little") ^ 0xFFFFFFFF
+            self.assertEqual(got, zlib.crc32(data), data[:4])
+            if len(data) > 100:
+                self.assertLess(steps / len(data), 25)      # instructions per byte
+
+    @unittest.skipUnless(D80_BIN.exists() and D80_SYM.exists(), "dot command not built")
+    def test_dot_command_progress_bar(self):
+        """bar_init + bar_step: the bar fills cell by cell and is full after
+        exactly the given number of steps."""
+        sym = {}
+        for line in D80_SYM.read_text().splitlines():
+            name, _, val = line.partition(": EQU ")
+            if val:
+                sym[name] = int(val, 16)
+        # img_steps: the bar length by extension, *.d40 = 360K
+        for path, steps in (("c:/d80/game.d40", 45), ("GAME.D40", 45), ("./dir/x.D40", 45),
+                            ("/d80/021.D80", 90), ("noext", 90), ("a.d40x/b.d80", 90)):
+            mem = bytearray(0x10000)
+            dot = D80_BIN.read_bytes()
+            mem[0x2000:0x2000 + len(dot)] = dot
+            raw = path.encode() + b"\0"
+            mem[sym["name_img"]:sym["name_img"] + len(raw)] = raw
+            mem[0] = 0x76
+            cpu = Z80(mem)
+            cpu.sp = 0xFF00
+            cpu.push(0x0000)
+            cpu.pc = sym["img_steps"]
+            while cpu.pc != 0:
+                cpu.step()
+            self.assertEqual(cpu.a, steps, path)
+
+        row, col, width = 9, sym["BAR_C"], sym["BAR_W"]
+
+        def cells(mem):
+            """filled cells: pixel line 3 of each bar cell is #FF"""
+            base = 0x4000 | ((row & 0x18) << 8) | ((row & 7) << 5)
+            return sum(mem[base + 3 * 256 + col + i] == 0xFF for i in range(width))
+
+        for total in (90, 45, 7, 104):
+            mem = bytearray(0x10000)
+            dot = D80_BIN.read_bytes()
+            mem[0x2000:0x2000 + len(dot)] = dot
+            mem[sym["line"]] = row
+            mem[0] = 0x76
+
+            def call(addr, a=0):
+                cpu = Z80(mem)
+                cpu.sp = 0xFF00
+                cpu.push(0x0000)
+                cpu.pc, cpu.a = addr, a
+                while cpu.pc != 0:
+                    cpu.step()
+            call(sym["bar_init"], total)
+            self.assertEqual(cells(mem), 0)
+            base = 0x4000 | ((row & 0x18) << 8) | ((row & 7) << 5)
+            top = base + 256                                          # pixel line 1
+            self.assertEqual(bytes(mem[top + col:top + col + width]), b"\xFF" * width)
+            self.assertEqual(bytes(mem[base + col:base + col + width]), bytes(width))  # gap
+            seen = []
+            for _ in range(total):
+                call(sym["bar_step"])
+                seen.append(cells(mem))
+            self.assertEqual(seen, sorted(seen))                     # never goes back
+            self.assertEqual(seen[-1], width, total)                  # full at the end
+            self.assertEqual(seen[total // 2 - 1], width * (total // 2) // total)
+
+    @unittest.skipUnless(have_all, "ROMs, sample image or patches.json not present")
+    def test_mdos_uses_blank_image(self):
+        from d80tool.image import MdosImage, blank_image
+        t = TestSdWrite()
+        m = t.machine(image=blank_image("Empty"))       # with -w
+        m.type_keys(CAT)
+        m.run_frames(60)
+        text = [s for s in m.screen_text() if s.strip()]
+        self.assertIn("Directory of Empty", text)
+        self.assertEqual(text[-1], "0 OK, 0:1")
+        m.type_keys(SAVE_TEST)
+        m.run_frames(150)
+        self.assertEqual([s for s in m.screen_text() if s.strip()][-1], "0 OK, 0:1")
+        im = MdosImage(m.image_bytes())
+        self.assertEqual([(e.name.strip(), e.type, e.length) for e in im.entries()],
+                         [("test", "B", 6912)])
+        self.assertIsNone(im.check(im.entries()[0]))
+        t.check_card(m)
+
 
 
 def snapshots(m):
@@ -224,33 +409,276 @@ class TestSnap(unittest.TestCase):
         self.assertIn("1982 Sinclair Research Ltd", m.screen_text()[-1])   # BASIC goes on
 
 
+CAT_B = [["CAPS", "SYM"], ["SYM", "9"], ["SYM", "P"], ["B"], ["SYM", "Z"], ["SYM", "P"],
+         ["ENTER"]]                                    # CAT "b:"
+CAT_A = CAT_B[:3] + [["A"]] + CAT_B[4:]                # CAT "a:"
+SAVE_B = SAVE_TEST[:3] + [["B"], ["SYM", "Z"]] + SAVE_TEST[3:]   # SAVE *"b:test" CODE ...
+LOAD_B = [["J"]] + SAVE_B[1:]                          # LOAD *"b:test" CODE 16384,6912
+
+
+def lines(m):
+    return [t for t in m.screen_text() if t.strip()]
+
+
+MENU_TITLE = "Swap A: and B:"                     # shown while the menu is open
+HOLD = 400_000                                         # CPU steps: DRIVE held (> 0.4 s)
+
+
+def regs(c):
+    return (c.a, c.f, c.bc, c.de, c.hl, c.a_, c.f_, c.b_, c.c_, c.d_, c.e_, c.h_, c.l_,
+            c.ix, c.iy, c.i, c.sp, c.pc, c.iff1)
+
+
+@unittest.skipUnless(have_all, "ROMs, sample image or patches.json not present")
+class TestMenu(unittest.TestCase):
+    """DRIVE held (or CAPS SHIFT + DRIVE): the D80 menu."""
+
+    def basic(self, image_b=None):
+        from d80tool.nextmmu import DidaktikNext
+        m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), IMAGE.read_bytes(),
+                         image_b=image_b)
+        m.run_frames(100)
+        return m
+
+    def menu(self, m, keys, hold=HOLD):
+        """Open the menu, check it is shown, press keys, wait until MDOS is paged out."""
+        self.assertTrue(m.press_snap(hold=hold))
+        m.run_frames(30)
+        self.assertIn(MENU_TITLE, " ".join(m.screen_text()))
+        for k in keys[:-1]:
+            m.type_keys([[k]])
+        m.pressed = {keys[-1]}                          # the last key: stop right after
+        for _ in range(2_000_000):                      # MDOS has paged out
+            m.cpu.step()
+            if not m.cpu.mapped:
+                break
+        m.pressed = set()
+
+    def clean(self, m, game=False):
+        c = m.cpu
+        self.assertFalse(c.mapped)
+        self.assertFalse(c.nmi_active)
+        self.assertEqual(c.nr06, 0x10)
+        self.assertEqual((c.mmu[6], c.mmu[7]), (0, 1))
+        self.assertEqual(c.mdos_rom_writes, [])
+        if not game:                                    # HEXAGONIA does OUT 145 itself
+            self.assertEqual(m.fdc_access, [])
+
+    def cat(self, m, keys=CAT):
+        m.type_keys([["V"], ["ENTER"]])                 # CLS
+        m.run_frames(10)
+        m.type_keys(keys)
+        m.run_frames(60)
+        text = m.screen_text()
+        if text[-1] == "scroll?":
+            m.type_keys([["N"]])
+            m.run_frames(10)
+        return text
+
+    def test_back_leaves_program_untouched(self):
+        m = TestSnap.hexagonia()
+        c = m.cpu
+        for _ in range(3000):
+            c.step()
+        before, state = bytes(m.mem[0x4000:]), regs(c)
+        self.menu(m, ["SPACE"])
+        self.assertEqual(regs(c), state)                 # back at the interrupted PC
+        self.assertEqual(bytes(m.mem[0x4000:0x5B00]), before[:0x1B00])   # screen restored
+        low = c.sp - 10 - 0x4000                         # NMI 2 + 8 (as MDOS #0068)
+        self.assertEqual(bytes(m.mem[0x4000:0x4000 + low]), before[:low])
+        self.assertEqual(bytes(m.mem[c.sp:]), before[c.sp - 0x4000:])
+        self.clean(m, game=True)
+        m.run_frames(50)
+        self.assertEqual((c.im, c.i), (2, 0x3A))         # the game goes on
+        self.assertEqual(snapshots(m), {})
+
+    def test_short_press_is_still_snap(self):
+        m = self.basic()
+        self.assertTrue(m.press_snap())
+        m.run_frames(200)
+        self.assertNotIn(MENU_TITLE, " ".join(m.screen_text()))
+        self.assertEqual(list(snapshots(m)), ["SNAPSHOT00"])
+
+    def test_caps_shift_opens_menu(self):
+        m = self.basic()
+        m.pressed = {"CAPS"}
+        self.assertTrue(m.press_snap())                  # short press
+        m.run_frames(10)
+        m.pressed = set()
+        m.run_frames(20)
+        self.assertIn(MENU_TITLE, " ".join(m.screen_text()))
+        m.type_keys([["SPACE"]])
+        m.run_frames(5)
+        self.clean(m, game=True)
+
+    def test_snapshot_from_menu(self):
+        m = TestSnap.hexagonia()
+        c = m.cpu
+        for _ in range(3000):
+            c.step()
+        ram, pc = bytes(m.mem[0x4000:]), c.pc
+        self.menu(m, ["S"])
+        m.run_frames(300)
+        self.clean(m, game=True)
+        from d80tool.snapshot import parse
+        s = parse(snapshots(m)["SNAPSHOT00"])
+        self.assertEqual(s.pc, pc)
+        low = s.sp - 8 - 0x4000
+        self.assertEqual(s.ram[:low], ram[:low])         # the screen without the menu
+        self.assertEqual((c.im, c.i), (2, 0x3A))
+
+    def test_swap(self):
+        from d80tool.image import blank_image
+        m = self.basic(image_b=blank_image("DiskB"))
+        self.menu(m, ["X", "SPACE"])                     # hot key
+        self.clean(m)
+        self.assertIn("Directory of DiskB", " ".join(self.cat(m, CAT_A)))
+        self.assertIn("Directory of NoNameDisk", " ".join(self.cat(m, CAT_B)))
+        self.menu(m, ["ENTER", "6", "6", "6", "ENTER"])  # "Swap A: and B:", then "Back"
+        self.assertIn("Directory of NoNameDisk", " ".join(self.cat(m, CAT_A)))
+        self.assertIn("Directory of DiskB", " ".join(self.cat(m, CAT_B)))
+        m.type_keys(SAVE_B)                              # B: still writable
+        m.run_frames(150)
+        self.assertEqual(lines(m)[-1], "0 OK, 0:1")
+        self.clean(m)
+
+    def test_cursor_keys(self):
+        m = self.basic()
+        self.menu(m, ["6", "6", "7", "ENTER"])           # down, down, up: "Snapshot"
+        m.run_frames(200)
+        self.assertEqual(list(snapshots(m)), ["SNAPSHOT00"])
+        self.clean(m)
+
+    def test_swap_into_empty_drive(self):
+        m = self.basic()                                 # no image for B:
+        self.menu(m, ["X", "SPACE"])
+        self.assertNotIn("Directory of", " ".join(self.cat(m, CAT_A)))
+        self.assertIn("Directory of NoNameDisk", " ".join(self.cat(m, CAT_B)))
+        self.clean(m)
+
+    def test_reset(self):
+        m = TestSnap.hexagonia()
+        self.menu(m, ["R"])
+        m.run_frames(150)
+        self.assertIn("1982 Sinclair Research Ltd", m.screen_text()[-1])
+        self.clean(m, game=True)
+        self.assertIn("Directory of NoNameDisk", " ".join(self.cat(m, CAT_A)))
+
+
+@unittest.skipUnless(have_all, "ROMs, sample image or patches.json not present")
+class TestDriveB(unittest.TestCase):
+    """A second image in drive B: (.d80 a.d80 b.d80)."""
+
+    def test_cat_save_load_on_b_with_sd(self):
+        from d80tool.image import MdosImage, blank_image
+        t = TestSdWrite()
+        a = IMAGE.read_bytes()
+        m = t.machine(image_b=blank_image("DiskB"))
+        m.type_keys(CAT_B)
+        m.run_frames(60)
+        self.assertEqual(lines(m), ["Directory of DiskB", "0 File(s),   730112 Bytes free.",
+                                    "0 OK, 0:1"])
+        m.type_keys(SAVE_B)
+        m.run_frames(150)
+        self.assertEqual(lines(m)[-1], "0 OK, 0:1")
+        b = MdosImage(m.image_bytes(1))
+        self.assertEqual([(e.name.strip(), e.type, e.length) for e in b.entries()],
+                         [("test", "B", 6912)])
+        self.assertIsNone(b.check(b.entries()[0]))
+        self.assertEqual(m.image_bytes(0), a)               # A: untouched
+        t.check_card(m)
+        m.type_keys(LOAD_B)
+        m.run_frames(150)
+        self.assertEqual(lines(m)[-1], "0 OK, 0:1")
+        m.type_keys(CAT)                                   # A: is still the default
+        m.run_frames(60)
+        self.assertIn("Directory of NoNameDisk", m.screen_text())
+
+    def test_blank_d40_in_b(self):
+        from d80tool.image import MdosImage, blank_image
+        t = TestSdWrite()
+        m = t.machine(image_b=blank_image("Small", tracks=40))
+        m.type_keys(CAT_B)
+        m.run_frames(60)
+        self.assertEqual(lines(m), ["Directory of Small", "0 File(s),   361472 Bytes free.",
+                                    "0 OK, 0:1"])
+        m.type_keys(SAVE_B)
+        m.run_frames(150)
+        self.assertEqual(lines(m)[-1], "0 OK, 0:1")
+        b = MdosImage(m.image_bytes(1))
+        self.assertEqual([(e.name.strip(), e.length) for e in b.entries()], [("test", 6912)])
+        self.assertIsNone(b.check(b.entries()[0]))
+        self.assertTrue(all(s < 720 for s in b.chain(b.entries()[0].first_sector)[0]))
+        t.check_card(m)
+
+    def test_no_image_in_b(self):
+        from d80tool.nextmmu import DidaktikNext
+        m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), IMAGE.read_bytes())
+        m.run_frames(100)
+        m.type_keys(CAT_B)
+        m.run_frames(60)
+        text = lines(m)
+        self.assertNotIn("Directory of", " ".join(text))
+        self.assertNotEqual(text[-1], "0 OK, 0:1")
+        self.assertEqual(m.fdc_access, [])
+        m.type_keys(CAT)                                   # A: still works
+        m.run_frames(60)
+        self.assertIn("Directory of NoNameDisk", m.screen_text())
+
+    @unittest.skipUnless((ROOT / "images" / "035-X-MAGAZIN.d80").exists(), "035-X-MAGAZIN.d80 missing")
+    def test_sector_ops_follow_active_drive(self):
+        """X-MAGAZIN reaches the sector loop with IX = #3E0C (drive 1's descriptor)
+        while A: is active. MDOS's own ops select the drive from #3E6B, so must ours:
+        selecting by IX gave "Device unavailable" (B: is empty)."""
+        from d80tool.nextmmu import DidaktikNext
+        img = (ROOT / "images" / "035-X-MAGAZIN.d80").read_bytes()
+        m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), img)
+        m.run_frames(150)
+        m.type_keys([["R"], ["ENTER"]])
+        m.run_frames(600)
+        self.assertNotIn("Device unavailable", m.screen_text())
+        self.assertEqual(m.fdc_access, [])
+
+
 @unittest.skipUnless(have_all, "ROMs, sample image or patches.json not present")
 class TestSdWrite(unittest.TestCase):
     """-w: every sector MDOS writes goes through to the model SD card."""
 
     EXTENTS = [(100, 300), (2000, 600), (5000, 540)]     # a fragmented file (card sectors)
+    EXTENTS_B = [(6000, 700), (7000, 740)]                # image B: on the same card
 
-    def machine(self, block=True, pipelined=False, write_protect=False):
+    def machine(self, block=True, pipelined=False, write_protect=False, image=None,
+                image_b=None):
         from d80tool.mdospatch import SdMap
         from d80tool.nextmmu import DidaktikNext, SpiSdCard
-        image = IMAGE.read_bytes()
+        image = image or IMAGE.read_bytes()
         card = bytearray(b"\xAA" * 8192 * 512)
-        pos = 0
-        for s, n in self.EXTENTS:
-            card[s * 512:(s + n) * 512] = image[pos * 512:(pos + n) * 512]
-            pos += n
         unit = 1 if block else 512
-        sd = SdMap([(s * unit, n) for s, n in self.EXTENTS], 2 if block else 0)
+        maps = []
+        for img, extents in ((image, self.EXTENTS), (image_b, self.EXTENTS_B)):
+            if img is None:
+                maps.append(None)
+                continue
+            pos = 0
+            for s, n in extents:
+                card[s * 512:(s + n) * 512] = img[pos * 512:(pos + n) * 512]
+                pos += n
+            maps.append(SdMap([(s * unit, n) for s, n in extents], 2 if block else 0))
         self.card = SpiSdCard(card, block_addr=block, pipelined=pipelined,
                               write_protect=write_protect)
-        m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), image, sd=sd, card=self.card)
+        self.has_b = image_b is not None
+        m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), image, sd=maps[0], card=self.card,
+                         image_b=image_b, sd_b=maps[1])
         m.run_frames(100)
         return m
 
     def check_card(self, m):
-        inside = {s for b, n in self.EXTENTS for s in range(b, b + n)}
+        extents = self.EXTENTS + (self.EXTENTS_B if getattr(self, "has_b", False) else [])
+        inside = {s for b, n in extents for s in range(b, b + n)}
         self.assertEqual([w for w in self.card.writes if w not in inside], [])
         self.assertEqual(m.card_image(), m.image_bytes())
+        if getattr(self, "has_b", False):
+            self.assertEqual(m.card_image(1), m.image_bytes(1))
         self.assertEqual(m.fdc_access, [])
         self.assertEqual(m.cpu.mdos_rom_writes, [])
 

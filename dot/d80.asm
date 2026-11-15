@@ -1,11 +1,13 @@
 ; ---------------------------------------------------------------------------
 ; .D80 - boot a Didaktik D40/D80 disk image with MDOS 1.0 on the ZX Spectrum Next
 ;
-;   .d80 [-w] [-t] [-r mdos.rom] [-4 48.rom] image.d80
+;   .d80 [-w] [-r mdos.rom] [-4 48.rom] [-n] a.d80 [[-n] b.d80]
 ;
-;   -w  write disk changes through to the image file on the SD card
-;   -t  like -w, plus a write self-test on the last sector of the image
-;       (written inverted, read back, restored, read back)
+;   a.d80 goes into drive A:, the optional b.d80 into drive B:
+;
+;   -w  write disk changes through to the image files on the SD card
+;   -n  create the image that follows as a blank formatted 720K D80 disk first
+;       ("File exists" if it is there already)
 ;
 ; Loads the MDOS 1.0 ROM (default c:/sys/d80/mdos10.rom) and the standard
 ; 48K ROM (default c:/machines/next/48.rom), checks both by CRC32, applies the
@@ -35,6 +37,12 @@ F_READ      equ #9D
 DISK_FILEMAP equ #85
 IDE_BANK    equ #01BD
 FA_READ     equ #01
+FA_WRITE    equ #02
+FA_CREATE_NEW equ #04                   ; create, fail if the file exists
+F_WRITE     equ #9E
+ESX_EEXIST  equ 18
+WIN_T       equ 4                       ; progress window: title row
+WIN_B       equ 18                      ; ... last row (columns 1-30)
 
 WIN         equ #8000                   ; MMU slot 4 window used while loading
 WIN_REG     equ #54
@@ -61,9 +69,10 @@ start:
     jp c,fail
     ld a,(name_img) : and a
     jr nz,.have
-    ld hl,msg_usage : call print
+    ld hl,msg_usage : call say
     jp restore_ok
 .have:
+    call screen_init                    ; the progress window
 
     nextreg #7F,#02
 ; ---- MDOS ROM -> pages P_A (#0000-#1FFF) and P_B (#2000-#37FF + RAM) -----
@@ -73,6 +82,7 @@ start:
     call alloc : ld (pg_r1),a
 
     nextreg #7F,#03
+    ld hl,msg_rom_m : call say
     ld hl,name_mdos : call fopen
     call crc_init
     ld a,(pg_a) : ld bc,#2000 : call read_page
@@ -82,11 +92,13 @@ start:
     call fclose
     ld hl,MDOS_CRC & #FFFF : ld de,MDOS_CRC >> 16 : call crc_check
     ld hl,msg_mdos : jp nz,fail
+    ld hl,msg_ok : call say
     ld a,(pg_b) : nextreg WIN_REG,a     ; clear the 2K RAM at #3800
     ld hl,WIN+#1800 : ld de,WIN+#1801 : ld bc,#07FF : ld (hl),0 : ldir
 
     nextreg #7F,#04
 ; ---- 48K ROM -> pages R0, R1 (goes into the alternate ROM) ---------------
+    ld hl,msg_rom_4 : call say
     ld hl,name_48 : call fopen
     nextreg #7F,#41
     call crc_init
@@ -98,6 +110,7 @@ start:
     nextreg #7F,#44
     ld hl,ROM48_CRC & #FFFF : ld de,ROM48_CRC >> 16 : call crc_check
     ld hl,msg_48 : jp nz,fail
+    ld hl,msg_ok : call say
 
     nextreg #7F,#05
 ; ---- patches ----------------------------------------------------------------
@@ -106,11 +119,55 @@ start:
     ld a,(pg_b) : nextreg WIN_REG,a
     ld hl,patch_mdb : call apply
 
+; ---- the D80 menu page: menu code (#E000) + the 48K ROM font at #EC00 --------------
+    nextreg #7F,#0C
+    call alloc : ld (pg_menu),a
+    ld a,(pg_r1) : nextreg WIN_REG,a    ; font: 48K ROM #3D00-#3FFF
+    ld hl,WIN+#1D00 : ld de,sd_buf : ld bc,768 : ldir
+    ld a,(pg_menu) : nextreg WIN_REG,a
+    ld hl,WIN : ld de,WIN+1 : ld bc,#1FFF : ld (hl),0 : ldir
+    ld hl,menu_bin : ld de,WIN : ld bc,menu_len : ldir
+    ld hl,sd_buf : ld de,WIN+MENU_FONT : ld bc,768 : ldir
+    ld a,(pg_b) : nextreg WIN_REG,a
+    ld a,(pg_menu) : ld (WIN+MDB_MENU_PG-#2000),a
+
+; ---- drive A: and B: --------------------------------------------------------------
+    ld hl,name_img : ld (cur_name),hl
+    ld a,'A' : ld (cur_letter),a
+    ld a,(flag_na) : ld (flag_n),a
+    ld hl,WIN+MDB_SD_MAP-#2000 : ld (map_win),hl
+    call load_drive
+    ld hl,WIN+MDB_IMG_SECS-#2000 : ld de,WIN+MDB_SD_N-#2000
+    call store_drive
+
+    xor a : ld (n_img),a : ld (n_ext),a  ; drive B: (img_secs 0 = no disk)
+    ld hl,0 : ld (img_secs),hl
+    ld a,(name_img_b) : and a
+    jr z,.no_b
+    nextreg #7F,#0B
+    ld hl,name_img_b : ld (cur_name),hl
+    ld a,'B' : ld (cur_letter),a
+    ld a,(flag_nb) : ld (flag_n),a
+    ld hl,WIN+MDB_SD_MAP_B-#2000 : ld (map_win),hl
+    call load_drive
+.no_b:
+    ld hl,WIN+MDB_OTH_TAB-#2000 : ld de,WIN+MDB_OTH_SD-#2000
+    call store_drive
+    jp loaded
+
+; (cur_name) -> image in allocated pages, img_secs, img_pages; with -w also
+; the card extents at (map_win) and n_ext, sd_cs, sd_blk (checked)
+load_drive:
+    ld a,(flag_n) : and a
+    call nz,make_blank                  ; -n: create a formatted image first
     nextreg #7F,#06
-; ---- disk image -> allocated pages -------------------------------------------
-    ld hl,name_img : call fopen
+    ld a,(cur_letter) : call pr_char    ; "A: name [######      ] ok"
+    ld hl,msg_colon : call say
+    call say_name
+    ld hl,(cur_name) : call fopen
     ld a,(flag_w) : and a
     call nz,get_map                     ; must follow the open directly
+    call img_steps : call bar_init      ; 45 pages for *.d40, else 90
     ld hl,0 : ld (img_secs),hl
 .page:
     ld a,(n_img) : cp MAX_PAGES
@@ -127,6 +184,7 @@ start:
     ld hl,(img_secs) : ld e,a : ld d,0 : add hl,de : ld (img_secs),hl
     ld a,(n_img) : dec a
     call z,check_sdos                   ; first page: boot sector signature
+    call bar_step
     pop bc
     ld a,b : cp #20 : jr z,.page        ; full page: there may be more
     jr .done
@@ -141,20 +199,28 @@ start:
 
     ld a,(flag_w) : and a
     call nz,check_map
-    ld a,(flag_t) : and a
-    call nz,write_test
+    jp say_ok
 
+; the loaded drive -> MDOS B: HL = its table (img_secs, fix_pg2, fix_pg7,
+; page_table), DE = its sd_n, sd_cs, sd_blk (WIN addresses)
+store_drive:
+    ld a,(pg_b) : nextreg WIN_REG,a
+    ld bc,(img_secs) : ld (hl),c : inc hl : ld (hl),b : inc hl
+    ld (hl),10 : inc hl                 ; fix_pg2: 48K bank 5
+    ld (hl),1 : inc hl                  ; fix_pg7: 48K bank 0
+    push de
+    ex de,hl : ld hl,img_pages : ld bc,MAX_PAGES : ldir
+    pop hl
+    ld a,(n_ext) : ld (hl),a : inc hl
+    ld a,(sd_cs) : ld (hl),a : inc hl
+    ld a,(sd_blk) : ld (hl),a
+    ret
+
+loaded:
     nextreg #7F,#07
 ; ---- fill the loader data in MDOS B ------------------------------------------
     ld a,(pg_b) : nextreg WIN_REG,a
     ld a,(flag_w) : ld (WIN+MDB_SD_ON-#2000),a
-    ld a,(n_ext) : ld (WIN+MDB_SD_N-#2000),a
-    ld a,(sd_cs) : ld (WIN+MDB_SD_CS-#2000),a
-    ld a,(sd_blk) : ld (WIN+MDB_SD_BLK-#2000),a
-    ld hl,(img_secs) : ld (WIN+MDB_IMG_SECS-#2000),hl
-    ld a,10 : ld (WIN+MDB_FIX_PG2-#2000),a
-    ld a,1 : ld (WIN+MDB_FIX_PG7-#2000),a
-    ld hl,img_pages : ld de,WIN+MDB_PAGE_TABLE-#2000 : ld bc,MAX_PAGES : ldir
     ; SNAP: NextReg #06 bit 4 (DivMMC NMI from the DRIVE button) is set while
     ; the program runs and cleared while MDOS is paged in
     ld a,#06 : call nr_read
@@ -162,6 +228,9 @@ start:
     and #EF : ld (WIN+MDB_NR06_OFF0-#2000),a : ld (WIN+MDB_NR06_OFF8-#2000),a
     ld (s_nr06-STUB+stub_src),a
     ld a,(old_win) : nextreg WIN_REG,a
+    ld hl,msg_key : call say            ; wait for a key, then start
+.rel: xor a : in a,(#FE) : cpl : and #1F : jr nz,.rel
+.prs: xor a : in a,(#FE) : cpl : and #1F : jr z,.prs
 
 ; ---- point of no return -------------------------------------------------------
     di
@@ -247,7 +316,7 @@ nr_read:
 
 ; allocate an 8K page -> A = (pg_tmp) = page; fails with an error message
 alloc:
-    ld a,(n_alloc) : cp MAX_PAGES+4
+    ld a,(n_alloc) : cp 2*MAX_PAGES+6
     ld hl,msg_mem : jp nc,fail
     ld hl,#0001                         ; H = 0 (ZX memory), L = 1 (allocate)
     push hl : pop ix
@@ -332,19 +401,16 @@ apply:
     ldir
     jr apply
 
-; ---- CRC32 (reflected, poly #EDB88320) ----------------------------------------
+; ---- CRC32 (reflected, poly #EDB88320), table-driven ----------------------------
+; The table is built at CRC_TAB (1K after the binary, 256-aligned) as four
+; 256-byte planes: byte k of entry i at CRC_TAB + k*256 + i.  The area is
+; reused for sd_buf after the ROM checks.
 crc_init:
     ld hl,#FFFF : ld (crc),hl : ld (crc+2),hl
-    ret
-
-; HL = data, BC = length
-crc_add:
-    ld a,b : or c : ret z
-    push bc
-    ld a,(hl) : inc hl
-    push hl
-    ld hl,(crc) : ld de,(crc+2)
-    xor l : ld l,a
+    ld a,(crc_ready) : and a : ret nz   ; the table is built once
+    ld c,0                              ; C = entry
+.entry:
+    ld l,c : ld h,0 : ld de,0           ; DE:HL = C
     ld b,8
 .bit:
     srl d : rr e : rr h : rr l
@@ -355,10 +421,36 @@ crc_add:
     ld a,l : xor #20 : ld l,a
 .nx:
     djnz .bit
-    ld (crc),hl : ld (crc+2),de
-    pop hl : pop bc
-    dec bc
-    jr crc_add
+    push hl
+    ld a,l : ld l,c : ld h,CRC_TAB>>8 : ld (hl),a
+    pop af : inc h : ld (hl),a          ; (A = old H)
+    inc h : ld (hl),e
+    inc h : ld (hl),d
+    inc c
+    jr nz,.entry
+    ld a,1 : ld (crc_ready),a
+    ret
+
+; HL = data, BC = length.  crc = (crc >> 8) xor T[(crc xor byte) & #FF]
+crc_add:
+    ld a,b : or c : ret z
+    push bc : pop ix                    ; IX = count
+    ld de,(crc) : ld bc,(crc+2)         ; E, D, C, B = crc bytes 0..3
+.byte:
+    ld a,(hl) : inc hl
+    xor e
+    push hl
+    ld l,a : ld h,CRC_TAB>>8
+    ld a,(hl) : xor d : ld e,a          ; new byte 0 = byte 1 xor T0
+    inc h : ld a,(hl) : xor c : ld d,a  ; new byte 1 = byte 2 xor T1
+    inc h : ld a,(hl) : xor b : ld c,a  ; new byte 2 = byte 3 xor T2
+    inc h : ld b,(hl)                   ; new byte 3 = T3
+    pop hl
+    dec ix
+    ld a,ixh : or ixl
+    jr nz,.byte
+    ld (crc),de : ld (crc+2),bc
+    ret
 
 ; DE:HL = expected CRC -> Z if (crc) xor #FFFFFFFF matches
 crc_check:
@@ -373,7 +465,7 @@ crc_check:
 get_map:
     nextreg #7F,#20
     ld a,(pg_b) : nextreg WIN_REG,a
-    ld hl,WIN+MDB_SD_MAP-#2000
+    ld hl,(map_win)                     ; extent table of this drive
     push hl : pop ix
     ld de,MDB_SD_MAX
     ld a,(handle)
@@ -394,7 +486,7 @@ get_map:
 ; the last image sector must read back from the card as loaded by esxDOS
 check_map:
     nextreg #7F,#21
-    ld ix,WIN+MDB_SD_MAP-#2000
+    ld ix,(map_win)
     ld a,(n_ext) : ld b,a
     ld hl,0                             ; HL = first sector of the extent
 .ext:
@@ -464,48 +556,178 @@ map_lsn:
 ; (sd_lsn) -> sd_arg; fails with msg_sdchk
 sd_locate:
     ld a,(pg_b) : nextreg WIN_REG,a
-    ld ix,WIN+MDB_SD_MAP-#2000
+    ld ix,(map_win)
     ld a,(n_ext) : ld b,a
     ld hl,(sd_lsn)
     call sd_find
     ld hl,msg_sdchk : jp c,fail
     ret
 
-; -t: write the last image sector inverted, read it back, restore it, read back
-write_test:
-    nextreg #7F,#23
-    ld hl,(img_secs) : dec hl : ld (sd_lsn),hl
-    call sd_locate
-    ld hl,sd_buf : call sd_read         ; the original (equal to the RAM copy)
-    jr c,.bad
-    call invert
-    ld hl,sd_buf : call sd_write
-    jr c,.bad_restore
-    ld hl,sd_buf2 : call sd_read
-    jr c,.bad_restore
-    ld hl,sd_buf : ld de,sd_buf2 : call cmp512
-    jr nz,.bad_restore
-    nextreg #7F,#24
-    call invert
-    ld hl,sd_buf : call sd_write
-    jr c,.bad
-    ld hl,sd_buf2 : call sd_read
-    jr c,.bad
-    ld de,sd_buf2 : call cmp_ram
-    nextreg #7F,#25
-    ret
-.bad_restore:
-    call invert                         ; try to put the original back
-    ld hl,sd_buf : call sd_write
+; ---- -n: create a blank (formatted) 720K D80 image ------------------------------
+; Same layout as d80tool.image.blank_image (what MDOS 1.0 FORMAT writes).
+; Fails with "File exists" rather than overwrite anything.
+BLANK_SECS  equ 1440                    ; D80: 80 tracks x 2 sides x 9 sectors
+BLANK_D40   equ 720                     ; D40 (*.d40): 40 tracks
+BLANK_DATA  equ 14                      ; first data sector (after boot, FAT, directory)
+
+make_blank:
+    nextreg #7F,#08
+    ld hl,msg_new : call say            ; "New disk name [####    ] ok"
+    call say_name
+    call img_steps                      ; *.d40: a 360K D40 disk, else 720K D80
+    push af : call bar_init : pop af    ; (a bar step per 16 data sectors)
+    ld hl,BLANK_SECS-BLANK_DATA
+    cp 45 : ld a,0 : jr nz,.d80
+    ld hl,BLANK_D40-BLANK_DATA : inc a
+.d80:
+    ld (blk_d40),a : ld (blk_left),hl
+    ld hl,(cur_name) : push hl : pop ix
+    ld a,'*' : ld b,FA_WRITE|FA_CREATE_NEW
+    rst #08 : db F_OPEN
+    di
+    jr nc,.open
+    cp ESX_EEXIST
+    ld hl,msg_exists : jp z,fail
+    ld hl,msg_open : jp fail
+.open:
+    ld (handle),a
+    ld hl,0 : ld (blk_sec),hl
+.sys:                                   ; boot sector, FAT, directory: one by one
+    ld hl,(blk_sec) : call blank_sector
+    ld hl,sd_buf : ld bc,512 : call fwrite
+    ld hl,(blk_sec) : inc hl : ld (blk_sec),hl
+    ld a,l : cp BLANK_DATA : jr nz,.sys
+    ; data sectors: #E5 in 8K chunks from a temporary page
+    nextreg #7F,#09
+    call alloc
+    nextreg WIN_REG,a
+    ld hl,WIN : ld de,WIN+1 : ld bc,#1FFF : ld (hl),#E5 : ldir
+.data:
+    ld hl,(blk_left) : ld a,h : or l : jr z,.done
+    ld de,16 : or a : sbc hl,de
+    jr nc,.full
+    ld hl,(blk_left) : ld e,l           ; fewer than 16 sectors left
+    ld hl,0
+.full:
+    ld (blk_left),hl
+    ld a,e : add a,a : ld b,a : ld c,0  ; BC = sectors * 512
+    ld hl,WIN : call fwrite
+    call bar_step
+    jr .data
+.done:
+    ld hl,n_alloc : dec (hl)            ; give the temporary page back
+    ld a,(pg_tmp) : call free
+    ld a,(old_win) : nextreg WIN_REG,a
+    call fclose
+    jp say_ok
+
+; HL = data, BC = length: write to (handle); fails with msg_write
+fwrite:
+    push bc
+    push hl : pop ix
+    ld a,(handle)
+    rst #08 : db F_WRITE
+    di
+    pop hl
+    ld de,msg_write : jp c,.bad
+    or a : sbc hl,bc                    ; all bytes written?
+    ret z
 .bad:
-    ld hl,msg_sdwr : jp fail
+    ex de,hl : jp fail
 
-invert:
+; HL = sector number -> sd_buf = that sector of a blank image (bytes 202-203
+; of the boot sector are random, from R)
+blank_sector:
+    ld a,h : or a : jr nz,.e5
+    ld a,l : cp 6 : jr nc,.e5
+    and a : jr z,.boot
+    ld e,#00 : call .fill               ; FAT sectors 1-5 (341 entries each):
+    ld a,l : cp 1 : jr nz,.not1         ; entries 14 .. sectors-1 free
+    ld hl,sd_buf : ld bc,21 : ld e,#DD : call .fill_hl   ; entries 0-13 reserved
+    jr .last
+.not1:
+    ld b,a
+    ld a,(blk_d40) : and a
+    ld a,b : jr z,.d80
+    cp 3 : jr c,.last                   ; D40: sector 2 free, 3 up to 719, 4-5 reserved
+    ld hl,sd_buf+57 : jr z,.part
+    ld e,#DD : jp .fill
+.d80:
+    cp 5 : jr nz,.last                  ; D80: sectors 2-4 free, 5 up to 1439
+    ld hl,sd_buf+114
+.part:                                  ; HL .. end of sd_buf reserved
+    ex de,hl : ld hl,sd_buf+512 : or a : sbc hl,de
+    ld b,h : ld c,l : ex de,hl
+    ld e,#DD : jp .fill_hl
+.last:
+    ld a,#0D : ld (sd_buf+511),a        ; filler nibble of the 341st entry
+    ret
+.e5:
+    ld e,#E5
+.fill:
+    push hl
     ld hl,sd_buf : ld bc,512
-.i: ld a,(hl) : cpl : ld (hl),a
-    inc hl : dec bc : ld a,b : or c : jr nz,.i
+    call .fill_hl
+    pop hl
+    ret
+.fill_hl:                               ; HL = start, BC = length (> 1), E = byte
+    ld (hl),e
+    ld d,h : ld e,l : inc de
+    dec bc
+    ldir
+    ret
+.boot:
+    ld e,0 : call .fill
+    ld hl,blank_desc : ld de,sd_buf+128 : ld bc,60 : ldir
+    ld a,(blk_d40) : and a : jr z,.d80t
+    ld a,40 : ld (sd_buf+178),a         ; D40: 40 tracks
+.d80t:
+    ld hl,sd_buf+192 : ld bc,10 : ld e,' ' : call .fill_hl
+    call disk_name                      ; HL = name, B = length (<= 10)
+    ld de,sd_buf+192
+    ld a,b : and a : jr z,.noname
+    ld c,b : ld b,0 : ldir
+    jr .id
+.noname:
+    ld hl,no_name : ld bc,10 : ldir
+.id:
+    ld a,r : ld (sd_buf+202),a
+    ld a,r : rlca : xor #A5 : ld (sd_buf+203),a
+    ld hl,sdos : ld de,sd_buf+204 : ld bc,4 : ldir
     ret
 
+; (cur_name) -> HL = file name without directory and extension, B = its length
+; (at most 10)
+disk_name:
+    ld hl,(cur_name) : ld d,h : ld e,l  ; DE = start of the last path component
+.find:
+    ld a,(hl) : and a : jr z,.got
+    inc hl
+    cp '/' : jr z,.sep
+    cp ':' : jr nz,.find
+.sep:
+    ld d,h : ld e,l
+    jr .find
+.got:
+    ld h,d : ld l,e : ld b,0
+.len:
+    ld a,(de) : and a : ret z
+    cp '.' : ret z
+    ld a,b : cp 10 : ret z
+    inc de : inc b
+    jr .len
+
+; drive descriptors #3E00 at the time of FORMAT (the most common state on the
+; sample disks) and the descriptor of the formatted drive (offset 176)
+blank_desc:
+    db #01,#18,#50,#09,#00,#18,#5E,#09,#00,#00,#00,#00
+    db #01,#18,#50,#09,#00,#18,#5E,#09,#00,#00,#00,#00
+    db #01,#18,#5E,#09,#00,#18,#5E,#09,#00,#00,#00,#00
+    db #01,#18,#5E,#09,#00,#18,#5E,#09,#00,#00,#00,#00
+    db #01,#18,#50,#09,#00,#18,#5E,#09,#00,#00,#00,#00
+no_name:    db "NoNameDisk"
+
+    DEFINE SD_READ_ONLY                 ; the loader only reads the card (map check)
     INCLUDE "sdspi.asm"
 
 ; ---- argument parsing -----------------------------------------------------------
@@ -519,24 +741,31 @@ parse:
     cp '-' : jr nz,.image
     inc hl : ld a,(hl) : inc hl
     or #20
-    cp 't' : jr nz,.not_t
-    ld (flag_t),a
-    ld (flag_w),a
-    jr .next
-.not_t:
     cp 'w' : jr nz,.not_w
     ld (flag_w),a
     jr .next
 .not_w:
+    cp 'n' : jr nz,.not_n
+    ld (flag_n),a
+    jr .next
+.not_n:
     ld de,name_mdos : cp 'r' : jr z,.opt
     ld de,name_48 : cp '4' : jr z,.opt
+.usage:
     ld hl,msg_usage : scf : ret
 .opt:
     call skip_sp
     call copy_tok
     jr .next
-.image:
-    ld de,name_img
+.image:                                 ; first image -> A:, second -> B:
+    ld de,name_img : ld bc,flag_na
+    ld a,(de) : and a : jr z,.store
+    ld de,name_img_b : ld bc,flag_nb
+    ld a,(de) : and a
+    jr nz,.usage                        ; a third image
+.store:
+    ld a,(flag_n) : ld (bc),a           ; -n applies to the image that follows it
+    xor a : ld (flag_n),a
     call copy_tok
     jr .next
 
@@ -576,12 +805,172 @@ copy_tok:
     djnz .q
     jr .e
 
-; HL = text (last char has bit 7 set)
-print:
-    ld a,(hl) : and #7F : rst #10
-    bit 7,(hl) : inc hl
-    jr z,print
+; ---- progress report ----------------------------------------------------------
+; A clear screen with a window in the style of the 128 menu: black title bar
+; with the rainbow, white body.  Text goes through RST #10 with AT positions.
+screen_init:
+    ld a,7 : out (#FE),a                ; white border, white (not bright) screen
+    ld hl,#4000 : ld de,#4001 : ld bc,#17FF : ld (hl),0 : ldir
+    inc hl : inc de : ld bc,#2FF : ld (hl),#38 : ldir
+    ld c,WIN_T : ld a,#47 : call row_fill   ; title bar: black paper, white ink
+.b: inc c : ld a,#78 : call row_fill    ; body: white paper, black ink (bright)
+    ld a,c : cp WIN_B : jr nz,.b
+    ld hl,#5800+WIN_T*32+24 : ld de,stripe_attr
+    ld b,5
+.a: ld a,(de) : ld (hl),a : inc hl : inc de
+    djnz .a
+    ld hl,#4000+((WIN_T&#18)<<8)+((WIN_T&7)<<5)+24
+    ld b,8                              ; DE = diagonal (after stripe_attr)
+.p: ld a,(de) : push hl
+    ld (hl),a : inc l : ld (hl),a : inc l : ld (hl),a : inc l : ld (hl),a : inc l : ld (hl),a
+    pop hl : inc h : inc de
+    djnz .p
+    ld hl,msg_hello : jp say
+
+; C = row, A = attribute: columns 1-30
+row_fill:
+    push af
+    ld l,c : ld h,0 : add hl,hl : add hl,hl : add hl,hl : add hl,hl : add hl,hl
+    ld de,#5801 : add hl,de
+    pop af
+    ld b,30
+.f: ld (hl),a : inc hl
+    djnz .f
     ret
+
+; ---- progress bar: BAR_W cells from column BAR_C of the current window line ----
+BAR_C       equ 16
+BAR_W       equ 12
+
+; (cur_name) -> A = steps of the bar: 45 pages for a *.d40 image (360K), else 90 (720K)
+img_steps:
+    ld hl,(cur_name) : ld de,0          ; DE = the last '.'
+.s: ld a,(hl) : and a : jr z,.e
+    cp '.' : jr nz,.n
+    ld d,h : ld e,l
+.n: inc hl
+    jr .s
+.e: ld a,d : or e
+    ld a,90 : ret z
+    ex de,hl
+    inc hl : ld a,(hl) : or #20 : cp 'd'
+    ld a,90 : ret nz
+    inc hl : ld a,(hl) : cp '4'
+    ld a,90 : ret nz
+    inc hl : ld a,(hl) : cp '0'
+    ld a,90 : ret nz
+    ld a,45
+    ret
+
+; A = column -> HL = pixel line 0 of that cell in the current line (uses E)
+bar_addr:
+    ld e,a
+    ld a,(line) : ld l,a
+    and #18 : or #40 : ld h,a
+    ld a,l : and 7 : rrca : rrca : rrca
+    add a,e : ld l,a
+    ret
+
+; A = steps for the full bar: draw the empty bar
+bar_init:
+    ld (bar_total),a
+    xor a : ld (bar_acc),a
+    ld a,BAR_C : ld (bar_col),a
+    call bar_addr
+    ld c,0                              ; pixel line
+.l: push hl                             ; lines 0 and 7 stay blank (a gap
+    ld a,c : and a : jr z,.n            ; between the bars of two lines)
+    cp 7 : jr z,.n
+    cp 1 : jr z,.full
+    cp 6 : jr z,.full
+    ld (hl),#80 : inc l                 ; left edge, inside, right edge
+    ld d,BAR_W-2
+.z: ld (hl),0 : inc l
+    dec d : jr nz,.z
+    ld (hl),#01
+    jr .n
+.full:                                  ; top and bottom line
+    ld d,BAR_W
+.f: ld (hl),#FF : inc l
+    dec d : jr nz,.f
+.n: pop hl
+    inc h : inc c
+    ld a,c : cp 8 : jr nz,.l
+    ret
+
+; one step done: fill the cells it completes (keeps all registers but AF)
+bar_step:
+    push hl : push de : push bc
+    ld a,(bar_acc) : add a,BAR_W
+.w: ld hl,bar_total
+    cp (hl) : jr c,.x
+    sub (hl) : push af
+    call bar_cell
+    pop af
+    jr .w
+.x: ld (bar_acc),a
+    pop bc : pop de : pop hl
+    ret
+
+; fill the next cell of the bar, if there is one left
+bar_cell:
+    ld a,(bar_col) : cp BAR_C+BAR_W : ret nc
+    call bar_addr
+    inc h
+    ld b,4
+.c: inc h : ld (hl),#FF                 ; pixel lines 2-5
+    djnz .c
+    ld hl,bar_col : inc (hl)
+    ret
+
+; the bar full (an image smaller than 720K), "ok", then the next line
+say_ok:
+    ld b,BAR_W
+.f: push bc : call bar_cell : pop bc
+    djnz .f
+    ld a,22 : call pr_char.out          ; (.out: a 13 here is a row, not a new line)
+    ld a,(line) : call pr_char.out
+    ld a,BAR_C+BAR_W+1 : call pr_char.out
+    ld hl,msg_ok+1 : jp say
+
+; the image's name (no directory, no extension) and a space
+say_name:
+    call disk_name
+    ld a,b : and a : jr z,.sp
+.l: ld a,(hl) : call pr_char
+    inc hl
+    djnz .l
+.sp:ld a,' ' : jr pr_char
+
+; A = character -> RST #10 (the current NextZXOS screen mode), with NextZXOS's
+; own page in the window slot; keeps all registers but AF.  13 = next line of
+; the window.
+pr_char:
+    cp 13 : jr nz,.out
+    push hl
+    ld hl,line : inc (hl)
+    ld a,22 : call .out                 ; AT line, 2
+    ld a,(hl) : call .out
+    pop hl
+    ld a,2
+.out:
+    push hl : push de : push bc : push ix
+    ld c,a
+    ld a,WIN_REG : call nr_read : push af
+    ld a,(old_win) : nextreg WIN_REG,a
+    ld a,c : rst #10
+    di
+    pop af : nextreg WIN_REG,a
+    pop ix : pop bc : pop de : pop hl
+    ret
+
+; HL = text, last character with bit 7 set
+say:
+    ld a,(hl) : and #7F : call pr_char
+    bit 7,(hl) : inc hl
+    jr z,say
+    ret
+
 
 ; ---- exits ------------------------------------------------------------------------
 ; HL = error message (bit-7 terminated); may be reached from nested calls
@@ -614,7 +1003,21 @@ restore:
     ret
 
 ; ---- data -----------------------------------------------------------------------
-msg_usage:  db ".d80 [-w] [-t] [-r mdos.rom] [-4 48.rom] image.d8", '0'|#80
+msg_usage:  db ".d80 [-w] [-r mdos.rom] [-4 48.rom] [-n] a.d80 [[-n] b.d80", ']'|#80
+msg_exists: db "File exist", 's'|#80
+msg_hello:  db 22,WIN_T,2, 20,0,21,0,18,0,19,1, 17,0,16,7, "Didaktik D80 MDOS 1.0"
+            db 17,7,16,0, 13|#80          ; (AT, INVERSE 0, OVER 0, FLASH 0, BRIGHT 1, colours)
+msg_key:    db 22,WIN_B-1,9, "Press any ke", 'y'|#80
+line:       db WIN_T+1                  ; window row of the text
+stripe_attr: db #50, #72, #66, #6C, #45  ; rainbow: ink = colour on the left, paper = on the right
+diagonal:   db #FE, #FC, #F8, #F0, #E0, #C0, #80, #00
+msg_rom_m:  db "MDOS RO", 'M'|#80
+msg_rom_4:  db "48K RO", 'M'|#80
+msg_ok:     db " ok", 13|#80
+msg_colon:  db ":", ' '|#80
+msg_new:    db "New", ' '|#80             ; (+ a 10-character name: still left of the bar)
+
+msg_write:  db "Write erro", 'r'|#80
 msg_stack:  db "Stack in #8000-#9FF", 'F'|#80
 msg_mem:    db "Out of memor", 'y'|#80
 msg_open:   db "File not foun", 'd'|#80
@@ -626,7 +1029,6 @@ msg_img:    db "Not an MDOS dis", 'k'|#80
 msg_big:    db "Image too bi", 'g'|#80
 msg_fmap:   db "Image not mappable on SD car", 'd'|#80
 msg_sdchk:  db "SD card check faile", 'd'|#80
-msg_sdwr:   db "SD write test faile", 'd'|#80
 sdos:       db "SDOS"
 
 name_mdos:  db "c:/sys/d80/mdos10.rom", 0
@@ -634,6 +1036,15 @@ name_mdos:  db "c:/sys/d80/mdos10.rom", 0
 name_48:    db "c:/machines/next/48.rom", 0
             ds 64-24
 name_img:   ds 64
+name_img_b: ds 64
+cur_name:   dw name_img                 ; image being created / loaded
+map_win:    dw WIN+MDB_SD_MAP-#2000     ; its extent table in MDOS B (in WIN)
+cur_letter: db 'A'                      ; drive being loaded (progress report)
+bar_total:  db 1                        ; progress bar: steps for the full bar
+bar_acc:    db 0                        ; ... BAR_W per step, a cell per bar_total
+bar_col:    db 0                        ; ... next cell to fill
+flag_na:    db 0                        ; -n given for image A: / B:
+flag_nb:    db 0
 
 args:       dw 0
 err_msg:    dw 0
@@ -642,18 +1053,23 @@ old_turbo:  db 0
 old_win:    db 0
 handle:     db #FF
 crc:        ds 4
+crc_ready:  db 0
 pg_a:       db 0
 pg_b:       db 0
 pg_r0:      db 0
 pg_r1:      db 0
+pg_menu:    db 0
 pg_tmp:     db 0
 img_secs:   dw 0
 n_img:      db 0
 n_alloc:    db 0
 img_pages:  ds MAX_PAGES
-allocated:  ds MAX_PAGES+4
+allocated:  ds 2*MAX_PAGES+6
 flag_w:     db 0
-flag_t:     db 0
+flag_n:     db 0
+blk_sec:    dw 0
+blk_left:   dw 0
+blk_d40:    db 0                        ; -n: 1 = a 360K D40 disk
 n_ext:      db 0
 sd_cs:      db #FE
 sd_blk:     db 0
@@ -662,8 +1078,13 @@ sd_lsn:     dw 0
 
     INCLUDE "build/patches.inc"         ; patch_mda, patch_mdb, MDB_* offsets
 
+MENU_FONT   equ #0C00                   ; = FONT - #E000 in menu.asm
+menu_bin:   INCBIN "build/menu.bin"     ; the D80 menu (dot/menu.asm)
+menu_len    equ $-menu_bin
+
 end:
-sd_buf      equ end                     ; 2 x 512 bytes after the binary
-sd_buf2     equ end+512
+sd_buf      equ end                     ; 512 bytes after the binary (and the font copy)
+CRC_TAB     equ (end+255) & #FF00       ; CRC table (only while the ROMs are checked)
     ASSERT end+1024 <= #3E00, dot command too big
+    ASSERT CRC_TAB+1024 <= #3E00, no room for the CRC table
     SAVEBIN "build/D80", start, end-start

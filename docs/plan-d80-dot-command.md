@@ -1,4 +1,4 @@
-# Plan: `.d80` dot command — MDOS 1.0 with a RAM-backed floppy on the ZX Spectrum Next (status 2026-11-15)
+# Plan: `.d80` dot command — MDOS 1.0 with a RAM-backed floppy on the ZX Spectrum Next (status 2026-11-15; v1 done, open items below)
 
 ## Context
 The Python converter (`d80tool`) handles snapshots and single-load programs. It cannot handle software that calls MDOS at runtime: disk menus, multi-load games, and `CAT`/`MOVE`/`SAVE *` utilities. In the converter's bulk check, 47 of 314 programs ended as "reset" or "basic-error" for this reason.
@@ -53,16 +53,20 @@ The patches are generated from `dot/mdospatch.asm`: `tools/build_dot.py` assembl
 6. [done 2026-11-15] **Browser association:** the `D80:.d80 "|"` / `D40:.d80 "|"` lines go in `/nextzxos/browser.cfg`. The argument parser accepts `"quoted"` paths, which may contain spaces and `:`. Checked in ZEsarUX with `.d80 "c:/d80/021.D80"`, which reached marker `#E3` and the 48K screen.
 7. [done] **Docs:** README section, these notes, and the research report updated.
 
-## Out of scope for v1
+## Out of scope for v1 (open unless marked done)
 - write-back to SD (done since: `-w`, see [plan-d80-sd-write.md](plan-d80-sd-write.md));
 - SNAP on the Next NMI button (DivMMC entry `#0066`). Done since: the DRIVE button, see [plan-d80-snap.md](plan-d80-snap.md);
-- 128K mode;
-- MDOS 2.0 (8272 FDC);
+- blank image `-n`, drive B: and the D80 menu: done, see [plan-d80-drives-menu.md](plan-d80-drives-menu.md);
 - loading only the used sectors on 1 MB machines;
-- a table-driven CRC (the bitwise CRC takes about 0.6 s at 28 MHz).
+- a table-driven CRC (the bitwise CRC takes about 0.6 s at 28 MHz). Done since: the 1K table (four 256-byte planes) is built at start in the free RAM after the binary (`CRC_TAB`), and `crc_add` needs under 25 instructions per byte instead of over 100. `TestBlank.test_dot_command_crc` runs it in the Z80 model against `zlib.crc32`;
+- progress report while loading: done. The dot command clears the screen and draws a window in the style of the 128 menu directly into the screen (white screen, black title bar with the rainbow, white body). The text goes through `RST #10` with `AT` positions. Each image (and `-n` creating one) gets a 12-cell progress bar drawn into the screen. The bar length comes from the extension (`img_steps`): 45 pages for `*.d40` (360K), otherwise 90 (720K). `-n` uses the same rule: a `*.d40` name creates a 360K D40 disk (40 tracks; boot byte 178 = 40; FAT entries 14–719 free, FAT sector 3 from byte 57 and sectors 4–5 reserved). The file size is not used, because `F_FSTAT` returns an error under NextZXOS. The bar never runs past its 12 cells, and `say_ok` fills it up for an image of an unusual size. At the end it waits for a key (`Press any key`, marker `#07`) before the point of no return. Note: esxDOS calls from a dot command take buffer addresses in `HL`, not `IX`. The dot command is now 6,270 bytes (after `-t` was removed); about 380 bytes are left before the CRC table and `sd_buf` no longer fit below `#3E00`.
+
+## Not planned (decided 2026-11-15)
+- **128K mode:** not worth the effort. Programs that need 128K are not the target; MDOS 1.0 does not save the 128K state anyway.
+- **MDOS 2.0 (D80 v2, 8272 FDC):** not needed; the images run with MDOS 1.0.
 
 ## Verification
-- `python -m unittest discover -s tests -t .`: 16 tests, including a model boot plus `CAT` on disk 021.
+- `python -m unittest discover -s tests -t .`: 23 tests. They include a model boot with `CAT` on disk 021, SD write-through (`TestSdWrite`) and SNAP (`TestSnap`).
 - `python tools/build_dot.py` writes `dot/build/patches.json`, `patches.inc` and `D80`.
 - `python tools/preview_d80.py <mdos.rom> <48.rom> out/x images/021.d80 --keys R,ENTER,WAIT6,D`
 - `python tools/zesarux_next_check.py out/_next --mdos <mdos.rom> --image images/021.d80 --steps "wait:40,shot:boot"`

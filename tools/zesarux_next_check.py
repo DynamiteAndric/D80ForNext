@@ -1,7 +1,7 @@
 """Run the .d80 dot command in ZEsarUX (TBBlue / ZX Spectrum Next) and take screenshots.
 
     python tools/zesarux_next_check.py OUTDIR --mdos MDOS.rom --image disk.d80
-        [--command ".d80 {image}"] [--steps "wait:25,shot:boot,keys:R,ascii:13,wait:20,shot:run"]
+        [--image-b disk2.d80] [--command ".d80 {image} {image_b}"] [--steps "wait:25,shot:boot,keys:R,ascii:13,wait:20,shot:run"]
 
 A working copy of emulators/ZEsarUX/tbblue.mmc (NextZXOS) gets
 /dot/D80 (dot/build/D80), /sys/d80/mdos10.rom and /d80/<image>, and its
@@ -52,7 +52,17 @@ def plus3_basic(lines: list[tuple[int, bytes]], autostart: int) -> bytes:
     return bytes(h) + prog
 
 
-def prepare_sd(out: Path, mdos: Path, image: Path, command: str) -> tuple[Path, str]:
+def put_image(fs: Fat16, image: Path, used: set[str]) -> str:
+    name = image.stem[:8].upper().replace("-", "_") + ".D80"
+    while name in used:                         # the same image twice
+        name = name[:7] + chr(ord(name[7]) + 1) + ".D80" if len(name) == 12 else "X" + name
+    used.add(name)
+    fs.put(f"/d80/{name}", image.read_bytes())
+    return f"/d80/{name}"
+
+
+def prepare_sd(out: Path, mdos: Path, image: Path, command: str,
+               image_b: Path | None = None) -> tuple[Path, str]:
     sd = out / "sd.mmc"
     shutil.copyfile(ZDIR / "tbblue.mmc", sd)
     fs = Fat16(sd)
@@ -61,9 +71,10 @@ def prepare_sd(out: Path, mdos: Path, image: Path, command: str) -> tuple[Path, 
     fs.put("/machines/next/CONFIG.INI", cfg)
     fs.put("/dot/D80", (ROOT / "dot" / "build" / "D80").read_bytes())
     fs.put("/sys/d80/mdos10.rom", mdos.read_bytes())
-    name = image.stem[:8].upper().replace("-", "_") + ".D80"
-    fs.put(f"/d80/{name}", image.read_bytes())
-    line = command.format(image=f"/d80/{name}")
+    used: set[str] = set()
+    a = put_image(fs, image, used)
+    b = put_image(fs, image_b, used) if image_b else ""
+    line = command.format(image=a, image_b=b).strip()
     fs.put("/nextzxos/AUTOEXEC.BAS", plus3_basic([(10, line.encode())], 10))
     return sd, line
 
@@ -73,12 +84,14 @@ def main() -> None:
     ap.add_argument("outdir")
     ap.add_argument("--mdos", required=True)
     ap.add_argument("--image", required=True)
-    ap.add_argument("--command", default=".d80 {image}")
+    ap.add_argument("--image-b", help="second image for drive B: ({image_b} in --command)")
+    ap.add_argument("--command", default=".d80 {image} {image_b}")
     ap.add_argument("--steps", default="wait:25,shot:boot")
     a = ap.parse_args()
     out = Path(a.outdir).resolve()
     out.mkdir(parents=True, exist_ok=True)
-    sd, line = prepare_sd(out, Path(a.mdos), Path(a.image), a.command)
+    sd, line = prepare_sd(out, Path(a.mdos), Path(a.image), a.command,
+                          Path(a.image_b) if a.image_b else None)
     print(f"autoexec: {line}")
 
     proc = subprocess.Popen(

@@ -8,7 +8,7 @@
 2. **Check before trusting the map:** the extents must cover the whole image. With our own SPI code (CMD17), the dot command reads the first sector of every extent and the last sector of the image, and compares each one with the copy it has just loaded through esxDOS. Any difference, or more than 128 extents, aborts `.d80` with an error. Nothing is written in that case.
 3. **At run time (MDOS):** after the RAM copy is updated, `sec_write` / `sec_format` also write the sector to the card with CMD24 over SPI (port `#E7` chip select: `#FE` card 0, `#FD` card 1; port `#EB` data). This happens with interrupts off, after the user page is mapped back. A card error returns `BC = #0340` (WD status "write protect", class 3). MDOS then shows `Disk is write protected (Retry = R)`, and `R` retries the write.
 4. **Opt-in:** only `.d80 -w image.d80` writes. Without `-w`, v1 behaviour stays. The browser line becomes `D80:.d80 -w "|"` if the user wants it.
-5. **Self-test `-t`** (implies `-w`): after the map check, it writes the last image sector inverted, reads it back, writes the original back and reads that back too. This tests CMD24 on the real card without changing the file. It is used for the ZEsarUX check and as a first test on hardware.
+5. **Self-test `-t`** (implies `-w`; removed 2026-11-15, see below): after the map check, it writes the last image sector inverted, reads it back, writes the original back and reads that back too. This tests CMD24 on the real card without changing the file. It is used for the ZEsarUX check and as a first test on hardware.
 
 The SPI code (`dot/sdspi.asm`) is shared: the dot command and `mdospatch.asm` both include it. Writing only ever touches sectors inside the file's own extents, and the file size does not change, so the FAT is never modified.
 
@@ -23,6 +23,7 @@ The SPI code (`dot/sdspi.asm`) is shared: the dot command and `mdospatch.asm` bo
 5. [x] Tests (`tests/test_d80dot.py`, `TestSdWrite`): `SAVE *` in the model, then check that the card holds the same bytes as the RAM image; also a byte-addressed card, the `#E5` format fill and a write error followed by a retry.
 6. [x] ZEsarUX: `.d80 -t` runs the map check and the self-test on the emulated card (marker `#7F`).
 7. [x] Docs and `dist/`. [x] Real Next (2026-11-15): the `-t` self-test passed, and the user confirmed that writing works.
+8. [x] 2026-11-15: `-t` removed. Writing has been proven on real hardware, and the map check at load time (`check_map`) stays. The dot command no longer contains `sd_write` (`SD_READ_ONLY` in `sdspi.asm`), which saves 281 bytes.
 
 ## Results
 - **Model:** `SAVE *"test" CODE 16384,6912` on disk 021 writes 16 sectors (FAT, directory, data). The card holds exactly the RAM copy, and no sector outside the extents is touched. This holds for a fragmented file, block- and byte-addressed cards, and both read behaviours of port `#EB`. A refused write shows `Disk is write protected (Retry = R)`; `R` after the card recovers finishes the save. The `#E5` format fill was tested by calling `sd_put` directly, because the MDOS 1.0 `FORMAT` syntax is not known yet.
