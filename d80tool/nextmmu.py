@@ -56,12 +56,14 @@ class SpiSdCard:
     """
 
     def __init__(self, data: bytearray, block_addr: bool = True, card: int = 0,
-                 pipelined: bool = False, write_protect: bool = False) -> None:
+                 pipelined: bool = False, write_protect: bool = False, busy: int = 0) -> None:
         self.data = data
         self.block_addr = block_addr
         self.cs_value = 0xFD if card else 0xFE
         self.pipelined = pipelined
         self.write_protect = write_protect
+        self.busy = busy                    # exchanges a write keeps the card busy
+        self.busy_left = 0                  # (MISO low; commands and data ignored)
         self.selected = False
         self.cmd: list[int] = []
         self.out: list[int] = []
@@ -84,6 +86,9 @@ class SpiSdCard:
         return arg // 512
 
     def exchange(self, b: int) -> int:
+        if self.busy_left and not self.out:     # programming: time passes per clock
+            self.busy_left -= 1
+            return 0x00 if self.selected else 0xFF
         if not self.selected:
             return 0xFF
         reply = self.out.pop(0) if self.out else 0xFF
@@ -100,7 +105,11 @@ class SpiSdCard:
                     s = self.wr_sector
                     self.data[s * 512:(s + 1) * 512] = bytes(self.rx[1:513])
                     self.writes.append(s)
-                    self.out = [0xFF, 0x05, 0x00, 0x00, 0x00]
+                    if self.busy:               # busy starts a byte late (as real cards may)
+                        self.out = [0xFF, 0x05, 0xFF]
+                        self.busy_left = self.busy
+                    else:
+                        self.out = [0xFF, 0x05, 0x00, 0x00, 0x00]
                 self.rx = None
             return reply
         if self.cmd or (b & 0xC0) == 0x40:

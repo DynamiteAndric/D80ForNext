@@ -118,7 +118,35 @@ NR_PERIPH2  equ #06             ; bit 4: DivMMC NMI from the DRIVE button (SNAP)
 ; --- per-sector operations called through #3E63 by the loop at #22B2
     ORG #236A : jp sec_read
     ORG #23BE : jp sec_write
-    ORG #23D8 : jp sec_format
+    ORG #23D8
+sec_format:                     ; (in place of the original WD Write Track code,
+                                ; #23D8-#248D, which nothing else uses)
+; The original #23D8 formats a whole track (WD Write Track): B = track, and C
+; is not a sector (FORMAT #1394 passes its track count there).  Fill every
+; sector of track B with #E5.  -> BC as sec_op: #0300 = OK, else the error
+    ld c,0
+sf_loop:
+    push hl
+    push bc
+    ld a,2
+    call sec_op                 ; (IX = the active drive's descriptor after it)
+    ld a,c
+    and a
+    jr nz,sf_fail
+    pop bc
+    pop hl
+    inc c
+    ld a,c
+    cp (ix+3)                   ; sectors per track
+    jr c,sf_loop
+    ld bc,#0300
+    ret
+sf_fail:
+    pop hl                      ; (the saved BC: the error stays in BC)
+    pop hl
+    ret
+    ASSERT $ <= #248E, sec_format overlaps #248E
+
 
 ; --- drive select: no OUT (#83)
     ORG #2567 : nop : nop
@@ -191,8 +219,6 @@ sec_read:
 sec_write:
     ld a,1
     jr sec_op
-sec_format:
-    ld a,2
 sec_op:
     ld (op),a
     ld (SAVED_IX),ix
@@ -215,7 +241,7 @@ sop_addsec:
     ld de,(img_secs)
     or a
     sbc hl,de
-    jr nc,sop_range
+    jp nc,sop_range
     add hl,de
     ld a,l
     and #0F
@@ -284,7 +310,11 @@ smc_unmap:
     jr c,sop_wfail
 sop_ok:
     ei                          ; the original ops also end with EI
-    ld bc,0
+    ld a,(op)                   ; B = class as in the original ops (2 = read,
+    and a                       ; 3 = write/format), C = 0 = OK.  FORMAT's
+    ld bc,#0200                 ; verify (#13BB) needs B = 2 after a read
+    ret z
+    ld b,3
     ret
 sop_wfail:
     ld bc,#0340                 ; SD write failed: "Disk is write protected (Retry = R)"
