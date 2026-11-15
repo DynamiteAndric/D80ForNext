@@ -1,0 +1,8 @@
+out/
+__pycache__/
+*.pyc
+emulators/
+tools/sjasmplus/
+dot/build/*.lst
+dot/build/*.sym
+dist/sys/d80/mdos10.rom
