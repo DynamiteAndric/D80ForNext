@@ -22,7 +22,7 @@ import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-PATCHES = Path(__file__).resolve().parent.parent / "dot" / "build" / "patches.json"
+PATCHES = Path(__file__).resolve().parents[2] / "dot" / "build" / "patches.json"
 MENU_BIN = PATCHES.parent / "menu.bin"          # the D80 menu (dot/menu.asm), runs at #E000
 MENU_FONT = 0x0C00                               # 48K ROM font copy in the menu page
 

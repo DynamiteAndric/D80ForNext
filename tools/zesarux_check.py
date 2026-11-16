@@ -80,7 +80,7 @@ def bmp_to_png(bmp: Path, png: Path) -> None:
 def scr_to_png(scr: Path, png: Path) -> None:
     """Render a 6912-byte .scr (Spectrum screen memory) using the emu48 renderer."""
     import sys
-    sys.path.insert(0, str(ROOT))
+    sys.path.insert(0, str(ROOT / "tools"))
     from d80tool.emu48 import Spectrum48
     z = Spectrum48(bytes(16384))
     z.mem[0x4000:0x4000 + 6912] = scr.read_bytes()[:6912]

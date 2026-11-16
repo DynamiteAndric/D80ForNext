@@ -19,7 +19,6 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import fuse_check as fc  # noqa: E402
 from d80tool.image import MdosImage  # noqa: E402
 from d80tool import snapshot  # noqa: E402

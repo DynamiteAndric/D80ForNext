@@ -35,7 +35,7 @@ A user program that happens to run 48K ROM code at one of these addresses at the
   - a press during `CAT` / `LOAD *` is ignored.
 
 ## Verification
-- `d80tool/nextmmu.py` models NextReg `#06`, the button NMI, the instant `#0066` automap and the NMI hold.
+- `tools/d80tool/nextmmu.py` models NextReg `#06`, the button NMI, the instant `#0066` automap and the NMI hold.
 - Tests:
   - SNAP while HEXAGONIA runs → `SNAPSHOT00` (type `S`, 49 280 B) is in the image directory, the program continues, and the converted `.z80` holds the registers;
   - with `-w`, the snapshot also lands on the model SD card;

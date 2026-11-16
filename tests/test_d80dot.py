@@ -21,7 +21,6 @@ IMAGE = ROOT / "images" / "021.d80"
 SDCARD = ROOT / "emulators" / "ZEsarUX" / "tbblue.mmc"
 have_all = all(p.exists() for p in (MDOS, ROM48, IMAGE, PATCHES))
 
-sys.path.insert(0, str(ROOT / "tools"))
 
 
 class TestR(unittest.TestCase):
@@ -105,7 +104,7 @@ D80_SYM = ROOT / "dot" / "build" / "d80.sym"
 
 
 class TestBlank(unittest.TestCase):
-    """-n / d80tool new: a blank image as MDOS 1.0 FORMAT writes it."""
+    """-n / tools/new_image.py: a blank image as MDOS 1.0 FORMAT writes it."""
 
     def test_layout(self):
         from d80tool.image import MdosImage, blank_image

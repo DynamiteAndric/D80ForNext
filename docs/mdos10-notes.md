@@ -3,7 +3,7 @@
 ROM: `Didaktik_40-80_MDOS_v1_91.rom` (14 336 bytes, from cygnus.speccy.cz; kept in `emulators/roms/`, not in git). Disassembled with `d80tool.z80dis`:
 
 ```sh
-python -c "from d80tool.z80dis import listing; m=bytearray(65536); r=open('emulators/roms/Didaktik_40-80_MDOS_v1_91.rom','rb').read(); m[:len(r)]=r; print(listing(m,0x0000,0x0400))"
+python -c "import sys; sys.path.insert(0,'tools'); from d80tool.z80dis import listing; m=bytearray(65536); r=open('emulators/roms/Didaktik_40-80_MDOS_v1_91.rom','rb').read(); m[:len(r)]=r; print(listing(m,0x0000,0x0400))"
 ```
 
 ## Paging and entry points
@@ -89,7 +89,7 @@ Found while building `dot/mdospatch.asm`; all addresses are MDOS 1.0 (1991).
 | `#25BC` | — | `OUT (#89),A` plus the shadow at `#3EE9` |
 | `#25CE` | `#0038` | IM 1 handler while MDOS is paged in (motor time-out counter `#3EE2`) |
 
-Logical sector = `B`·spt + `C`, which is the linear sector order of the `.d80` images (see `d80tool/image.py`).
+Logical sector = `B`·spt + `C`, which is the linear sector order of the `.d80` images (see `tools/d80tool/image.py`).
 
 **Paging points.** There are 12 sites with `JP #1700`: `#005D` (end of the "call 48K ROM" helper at `#003B`), `#012C` (cold-init exit through `LD SP,#1019` — a stack inside the 48K ROM that "returns" to 48K `#0001`), `#0182`, `#01C5`, `#02C8`, `#02E4`, `#0373`, `#0391` (snapshot restore), `#0E09`, `#0E1B`, `#1061` and `#1968`. `#1700` itself is a `RET`, and `#1701+` is a data table. Some disk software (for example disk 022) calls MDOS routines directly and leaves with its own `JP #1700`.
 

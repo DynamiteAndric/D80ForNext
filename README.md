@@ -2,13 +2,13 @@
 
 The **`.d80` dot command** boots Didaktik D40/D80 (MDOS) disk images (`.d40`/`.d80`) on the ZX Spectrum Next with the real MDOS 1.0.
 
-The earlier PC converter (disk files to `.z80`/`.tap`) has been removed. What is left of the Python package `d80tool` supports `.d80`: the MDOS image reader, the patch builder, the Next model used by the tests, and one command:
+The earlier PC converter (disk files to `.z80`/`.tap`) has been removed. The Python helpers live in `tools/`: the library `tools/d80tool/` (MDOS image reader, patch builder, the Next model used by the tests), the build script and the emulator checks. To create a blank image on a PC:
 
 ```sh
-python -m d80tool new blank.d80 [--name X]           # blank formatted image (*.d40: 360K D40, else 720K D80)
+python tools/new_image.py blank.d80 [--name X]       # blank formatted image (*.d40: 360K D40, else 720K D80)
 ```
 
-It is pure Python 3.10+ with no dependencies.
+They are pure Python 3.10+ with no dependencies.
 
 ## Running images directly on the Next: `.d80`
 
@@ -43,7 +43,7 @@ Programs started from the browser then save to the image (`-w`). Leave out `-w` 
 
 **Drive B: (second image).** A second image name goes into drive B:. MDOS 1.0 has exactly two drives, so a third name is a usage error. MDOS addresses B: by the letter before a colon, for example `CAT "b:"`, `LOAD *"b:name"` and `SAVE *"b:name" CODE 16384,6912`. Without a drive letter it uses the current drive (A: after the start). With `-w`, writes go to the image file of the drive they are for. A 720K image needs 90 pages, so two images need 180 pages of free RAM (a 2 MB Next).
 
-**Blank disk (`-n`).** `-n` creates the image file as a freshly formatted disk, laid out as MDOS 1.0 FORMAT writes it: a 360K D40 disk (40 tracks) for a `*.d40` name, otherwise a 720K D80 disk. The disk name is the file name without its extension, up to 10 characters. If the file already exists, `.d80` stops with `File exists` and changes nothing. `-n` applies to the image name that follows it. Use it together with `-w`, otherwise the saves are lost at reset. `python -m d80tool new` writes the same image on a PC.
+**Blank disk (`-n`).** `-n` creates the image file as a freshly formatted disk, laid out as MDOS 1.0 FORMAT writes it: a 360K D40 disk (40 tracks) for a `*.d40` name, otherwise a 720K D80 disk. The disk name is the file name without its extension, up to 10 characters. If the file already exists, `.d80` stops with `File exists` and changes nothing. `-n` applies to the image name that follows it. Use it together with `-w`, otherwise the saves are lost at reset. `python tools/new_image.py` writes the same image on a PC.
 
 **SNAP button and D80 menu.** The Next's **DRIVE** button (DivMMC NMI, hotkey F10) works as the Didaktik SNAP button. A short press saves a snapshot. Holding DRIVE for about half a second, or pressing it with CAPS SHIFT held, opens the **D80 menu** instead:
 
@@ -98,7 +98,7 @@ ZEsarUX 13 runs the dot command up to `JP 0`, but it does not emulate the progra
 
 ## Emulator helpers
 
-`d80tool.emu48` is a minimal 48K Spectrum harness built on the bundled Python Z80 core; `d80tool.nextmmu` builds the Next model of `.d80` on it (`tools/preview_d80.py`). Both need a standard 48K ROM file, which is not included.
+`tools/d80tool/emu48.py` is a minimal 48K Spectrum harness built on the bundled Python Z80 core; `d80tool.nextmmu` builds the Next model of `.d80` on it (`tools/preview_d80.py`). Both need a standard 48K ROM file, which is not included.
 
 ### ZEsarUX (headless)
 

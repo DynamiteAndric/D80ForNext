@@ -48,7 +48,7 @@ The PC converter stays as it is and is kept working, but gets no new features. I
 - for files that open straight from the NextZXOS browser, or in emulators without Didaktik support;
 - for listing and extracting files on a PC.
 
-The `d80tool` package itself stays in active use: `image.py` (`blank_image`), `z80mini`, `nextmmu.py` and `mdospatch.py` are the model and patch builder behind `.d80`, its build (`tools/build_dot.py`) and its tests.
+The rest of the `d80tool` package stays in active use, now as `tools/d80tool/`: `image.py` (`blank_image`), `z80mini`, `nextmmu.py` and `mdospatch.py` are the model and patch builder behind `.d80`, its build (`tools/build_dot.py`) and its tests. The `new` command became `tools/new_image.py`.
 
 Dropped (were optional):
 - finishing the ZEsarUX bulk check (the 15 programs from 042/043, the 128K programs on `--machine 128k`);
