@@ -75,7 +75,7 @@ Differences from the real machines:
 - **Gama 80K:** the second 32K bank (`OUT 95,1`) is not emulated. The Next cannot intercept that port, so programs see only bank 0.
 - **8255 printer port:** there is none. `LPRINT`/`LLIST` through the 8255 do not print. `OUT 31` (`#1F`) also drives the Next's DAC A if the DACs are enabled.
 - **Timing:** the Next runs with 48K Sinclair timing, not the Didaktik ULA timing.
-- **Kompakt:** its built-in drive used MDOS 2.0. `.d80` runs MDOS 1.0 with the same 720K disks.
+- **Kompakt:** its built-in drive used MDOS 2.0. `.d80` runs MDOS 1.0 with the same 720K disks. The MDOS 2.0 fixes that matter are built in: SNAP picks a free `SNAPSHOTnn` name instead of overwriting one, MOVE no longer overwrites two bytes at 49152, and a file that does not fit on a full disk is deleted instead of left broken.
 
 ## Starting images from the NextZXOS browser
 
@@ -143,7 +143,7 @@ After a swap, MDOS reads the FAT and directory again. Disks addressed by *name* 
 
 ## Limits
 
-- 48K mode and MDOS 1.0 only. 128K mode is not planned; MDOS 2.0 is planned (`docs/plan-didaktik-machines.md`).
+- 48K mode and MDOS 1.0 only. 128K mode is not planned. MDOS 2.0 is not needed: its fixes are part of the patches (`docs/plan-didaktik-machines.md`).
 - At most two drives (A:, B:).
 - A 720K image needs 90 free 8K pages; two images need a 2 MB Next.
 - `-w` needs an image in at most 128 fragments on the card.

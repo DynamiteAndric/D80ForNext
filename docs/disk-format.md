@@ -4,7 +4,7 @@ Facts verified on real MDOS disks. See also [mdos10-notes.md](mdos10-notes.md) (
 
 ## Image layout
 
-A linear dump of 512-byte logical sectors (80 tracks × 2 sides × 9 sectors for D80; 40 tracks for D40). The boot sector holds the `SDOS` signature.
+A linear dump of 512-byte logical sectors (80 tracks × 2 sides × 9 sectors for D80; 40 tracks for D40). The boot sector holds the `SDOS` signature at 204 and the disk name at 192–201, padded with `0x00`. MDOS compares all 10 bytes when a file is addressed by volume (`"DiskName:file"`), so a space-padded name never matches.
 
 ## FAT
 

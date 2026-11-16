@@ -426,6 +426,19 @@ class TestSnap(unittest.TestCase):
         self.check_clean(m)
         self.assertEqual(sorted(snapshots(m)), ["SNAPSHOT00", "SNAPSHOT01"])
 
+    def test_snap_takes_a_free_name(self):
+        """MDOS 2.0 fix: after a reset the counter starts at 00 again. MDOS 1.0
+        then overwrote SNAPSHOT00; now SNAP counts up to a free name."""
+        m = self.demo()
+        self.assertTrue(m.press_snap())
+        m.run_frames(300)
+        m.cpu.mdb[0x3E61 - 0x2000] = 0                      # the counter, as after a reset
+        m.run_frames(50)
+        self.assertTrue(m.press_snap())
+        m.run_frames(300)
+        self.check_clean(m)
+        self.assertEqual(sorted(snapshots(m)), ["SNAPSHOT00", "SNAPSHOT01"])
+
     def test_snap_ignored_while_mdos_runs(self):
         import json
         from nextmmu import DidaktikNext
@@ -491,7 +504,63 @@ def lines(m):
     return [t for t in m.screen_text() if t.strip()]
 
 
-MENU_TITLE = "Swap A: and B:"                     # shown while the menu is open
+@unittest.skipUnless(have_all, "ROMs or patches.json not present")
+class TestMdos20Fixes(unittest.TestCase):
+    """MOVE between volumes, and the MDOS 2.0 fixes ported to the 1.0 patches."""
+
+    def machine(self, program, free_b=None, frames=1500):
+        """Boot with a "run" program on SrcDisk (A:, files data0-2 of 3000 bytes)
+        and DstDisk in B: (with only free_b sectors free), RUN it."""
+        from basic import tokenize
+        from image import MdosImage, add_file, blank_image
+        from nextmmu import DidaktikNext
+        a = bytearray(blank_image("SrcDisk"))
+        prog = tokenize(program)
+        add_file(a, "P", "run", prog, param1=10, param2=len(prog))
+        for n in range(3):
+            add_file(a, "B", f"data{n}", bytes([n + 1]) * 3000, param1=0x8000)
+        b = bytearray(blank_image("DstDisk"))
+        if free_b is not None:
+            add_file(b, "B", "filler", bytes(512 * (self.free(MdosImage(bytes(b))) - free_b)))
+        m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), bytes(a), image_b=bytes(b))
+        m.run_frames(150)
+        m.type_keys([["R"], ["ENTER"]])
+        m.run_frames(frames)
+        return m
+
+    @staticmethod
+    def free(im):
+        return sum(1 for s in range(14, im.total_sectors) if im.fat(s) == 0)
+
+    def files(self, m, drive):
+        from image import MdosImage
+        im = MdosImage(m.image_bytes(drive))
+        for e in im.entries():
+            self.assertIsNone(im.check(e))
+        return [e.name.strip() for e in im.entries()], self.free(im)
+
+    def test_move_keeps_program_memory(self):
+        """Volume names match (zero-padded disk names); MOVE no longer writes
+        #C000 (MDOS 1.0 stored BC there)."""
+        m = self.machine('10 POKE 49152,85: POKE 49153,170: MOVE "SrcDisk:data*","DstDisk:*"\n'
+                         '20 PRINT PEEK 49152,PEEK 49153')
+        self.assertEqual(lines(m), ["3 File(s) copied.", "85              170", "0 OK, 20:1"])
+        self.assertEqual(self.files(m, 1), (["data0", "data1", "data2"], 1426 - 18))
+        self.assertEqual(m.image_bytes(1)[192:202], b"DstDisk\0\0\0")
+
+    def test_move_disk_full_leaves_no_entry(self):
+        """MDOS 1.0 left the file that did not fit with an empty FAT chain."""
+        m = self.machine('10 MOVE "SrcDisk:data*","DstDisk:*"', free_b=8)
+        self.assertEqual(lines(m)[-1], "U Disk full, 10:1")
+        self.assertEqual(self.files(m, 1), (["filler", "data0"], 2))
+
+    def test_save_disk_full_leaves_no_entry(self):
+        m = self.machine('10 SAVE *"DstDisk:big" CODE 32768,3000', free_b=3, frames=800)
+        self.assertEqual(lines(m)[-1], "U Disk full, 10:1")
+        self.assertEqual(self.files(m, 1), (["filler"], 3))
+
+
+MENU_TITLE = "Swap A: and B:"                    # shown while the menu is open
 HOLD = 400_000                                         # CPU steps: DRIVE held (> 0.4 s)
 
 

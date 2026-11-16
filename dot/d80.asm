@@ -708,8 +708,7 @@ blank_sector:
     ld a,(blk_d40) : and a : jr z,.d80t
     ld a,40 : ld (sd_buf+178),a         ; D40: 40 tracks
 .d80t:
-    ld hl,sd_buf+192 : ld bc,10 : ld e,' ' : call .fill_hl
-    call disk_name                      ; HL = name, B = length (<= 10)
+    call disk_name                     ; HL = name, B = length (<= 10)
     ld de,sd_buf+192
     ld a,b : and a : jr z,.noname
     ld c,b : ld b,0 : ldir

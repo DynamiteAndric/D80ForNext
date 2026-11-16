@@ -26,7 +26,7 @@ Design notes and history:
 - [plan-d80-sd-write.md](plan-d80-sd-write.md) — writing to the SD card (`-w`)
 - [plan-d80-snap.md](plan-d80-snap.md) — the SNAP button
 - [plan-d80-drives-menu.md](plan-d80-drives-menu.md) — blank images, drive B:, the D80 menu
-- [plan-didaktik-machines.md](plan-didaktik-machines.md) — Didaktik Gama/M/Kompakt ROMs and MDOS 2.0
+- [plan-didaktik-machines.md](plan-didaktik-machines.md) — Didaktik Gama/M/Kompakt ROMs; MDOS 2.0 compared and its fixes ported
 - [plan-demo-disk.md](plan-demo-disk.md) — the generated demo disk that replaced the third-party samples
 - [mdos10-notes.md](mdos10-notes.md) — MDOS 1.0 disassembly notes
 - [snap-button.md](snap-button.md) — how the SNAP button works on the original hardware

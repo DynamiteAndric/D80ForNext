@@ -188,9 +188,11 @@ DATA_FIRST_SECTOR = DIR_FIRST_SECTOR + 8
 
 
 def blank_name(name: str) -> bytes:
-    """Disk name field: up to 10 characters, padded with spaces."""
+    """Disk name field: up to 10 characters, padded with zeros as MDOS FORMAT
+    does. MDOS compares volume names ("name:file") with all 10 bytes, so
+    space padding makes them never match."""
     raw = name.encode("latin-1", "replace")[:10]
-    return raw + b" " * (10 - len(raw))
+    return raw + bytes(10 - len(raw))
 
 
 def set_fat(data: bytearray, n: int, value: int) -> None:

@@ -52,7 +52,7 @@ class TestImages(unittest.TestCase):
         img = MdosImage(build_demo())
         self.assertTrue(img.signature_ok)
         self.assertEqual((img.tracks, img.sides, img.sectors_per_track), (80, 2, 9))
-        self.assertEqual(img.disk_name, "D80 Demo  ")
+        self.assertEqual(img.disk_name, "D80 Demo")              # zero-padded, as MDOS FORMAT
         entries = img.entries()
         self.assertEqual(len(entries), 28)
         self.assertTrue(all(img.check(e) is None for e in entries))

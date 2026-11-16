@@ -53,7 +53,34 @@ Changes from the plan below:
   - Say which ROMs work, that Gama 80K bank 1 is not supported, and that the 8255 printer (LPRINT) does nothing.
   - Users have to supply the ROMs. Never commit them.
 
-### Phase 2: MDOS 2.0 (the real Kompakt, also the D80 v2)
+### Phase 2: MDOS 2.0 — dropped; its fixes go into the 1.0 patches
+
+**Status: done (2026-11-16). MDOS 2.0 is not supported and is not needed.** The Kompakt ROM already runs with MDOS 1.0 (Phase 1). A byte-by-byte comparison of `Didaktik_40-80_MDOS_v1_91.rom` and `v2_93.rom` (3,524 bytes differ, 130 regions), with every MDA change disassembled, showed that 2.0 brings nothing the Next needs:
+
+| What changed in 2.0 | Where | On the Next |
+|---|---|---|
+| Driver for the Kompakt's WD37C65/765 FDC; `OUT #97/#99` to block the D80 v2's 8255 | MDB `#2217-#27FF` | Replaced by our RAM-image driver anyway |
+| Unused EPROM filled with `#FF` (1.0: `#FF`/`#00` noise) | `#2800-#37FF` | Nothing |
+| `RST 0` at `#0066` (written at `#2792`) | | We patch `#0066` the same way |
+| FORMAT shows track/side, runs a VERIFY pass, asks "New volume:" | MDA `#1519-#16A8`, `#130F-#13E6`, `#1493-#14E0` | Not needed: FORMAT of a RAM image is instant |
+| Only drives A: and B: (1.0 accepts A:-D:) | `#08AE`, `#08DD`, `#08FA`, `#1106-#110C`, `#1658` | A restriction, not a feature |
+| Boot border colour, version text, a free-memory off-by-one (`#0940`), the debug flag test at `#0221` | | Cosmetic |
+| **SNAP looks for a free SNAPSHOTnn name** (`#033A` → `#1620`) | MDA | **Ported** |
+| **MOVE: stray `LD (#C000),BC` removed** (`#1AAB`) | MDA | **Ported** |
+| **MOVE counts matching files before copying** (`#1ACD` → `#1680/#1699`, RAM `#3EFB`) | MDA | **Ported** |
+| **Disk full: delete the half-made file** (`#20BC` → `#166C`; `#0CDE/#0EB7` go to the plain error) | MDA/MDB | **Ported** |
+
+The routines the fixes call (`#217B`, `#1C8F`, `#212B/#212D`, `#1F88`, `#1D9D`, `#1C06`) are the same bytes in both versions, and so are the addresses that software calls directly (MDA up to `#1493`, `#236A/#23BE/#23D8`, `#21AC`). The disk format is the same.
+
+What was built:
+
+- `dot/mdospatch.asm`: the fixes as patches at `#033A`, `#0CDE`, `#0EB7`, `#1AAB`, `#1ACD-#1AD4` and `#20BC`, with the new code (`fix_*`, the same logic as 2.0 `#1620-#16A8`) at `FIXES` = `#2E00` in unused MDB EPROM. The one change from 2.0: the disk-full clean-up only erases the entry if it is found. The dot command grew to 6,811 bytes (patch table).
+- Found along the way: **volume names (`MOVE "SrcDisk:x","DstDisk:"`, `CAT "name:"`) never matched on images we create.** MDOS FORMAT pads the disk name with zeros and compares all 10 bytes; `blank_image` (`tools/image.py`), `.d80 -n` (`dot/d80.asm`) and the demo disk padded it with spaces. All now pad with zeros. MOVE takes only volume names, so it did not work at all on those images.
+- Tests: `TestSnap.test_snap_takes_a_free_name`; `TestMdos20Fixes` (wildcard MOVE between volumes keeps `#C000`; MOVE and SAVE onto a full disk leave no broken entry).
+
+Verified behaviour of MDOS 1.0 before the fixes (in the model): MOVE turned `#C000-#C001` into `00 00`; MOVE onto a full disk left the file that did not fit with an empty FAT chain; SAVE onto a full disk left the file with a short chain and the disk at 0 free sectors.
+
+The original Phase 2 plan, kept for reference:
 
 - New `dot/mdos20patch.asm`, written alongside `dot/mdospatch.asm`.
   - Reuse the MDA part unchanged where the bytes match: page-out sites, `#1FE8` move, `#0038`/`#1700` and SNAP entries.
@@ -76,6 +103,8 @@ Changes from the plan below:
 - **Exact Didaktik M timing.** Revisit only if a reference (MAME or measurements) shows that software breaks under 48K timing.
 
 ## Critical files
+
+(Written before Phase 2 was dropped: everything about `mdos20patch.asm`, patch sets and MDOS 2.0 tests below no longer applies.)
 
 - `dot/d80.asm`: ROM CRC tables, the `-m` option, and choosing the patch set
 - `dot/mdospatch.asm` (MDOS 1.0, kept as it is) and the new `dot/mdos20patch.asm`
