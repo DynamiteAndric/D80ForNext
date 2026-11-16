@@ -1,38 +1,18 @@
 # D40onNext — Didaktik D40/D80 images on the ZX Spectrum Next
 
-The main way to run Didaktik D40/D80 disks on the Next is the **`.d80` dot command** (see [below](#running-images-directly-on-the-next-d80)). It boots the image with the real MDOS 1.0.
+The **`.d80` dot command** boots Didaktik D40/D80 (MDOS) disk images (`.d40`/`.d80`) on the ZX Spectrum Next with the real MDOS 1.0.
 
-**The PC converter is no longer developed.** It stays as a fallback (a Next without enough free RAM for `.d80`, 128K programs, emulators without Didaktik support, extracting files on a PC) and is kept working, but it gets no new features.
-
-`d80tool` reads Didaktik D40/D80 (MDOS) disk images (`.d40`/`.d80`) and converts their content into formats that the ZX Spectrum Next (NextZXOS) and ordinary emulators load natively:
-
-| MDOS file | Output |
-|---|---|
-| `S` snapshot (raw or SNAPSHOT-PACKER compressed) | `.z80` (v1, 48K), optional `.sna` |
-| `P` BASIC program | `.tap`: loader with `LOAD *"x"` rewritten to `LOAD  "x"` (`*` → space, so no byte moves), plus the CODE files it names |
-| `B` bytes, `N`/`C` arrays | inside the program tapes and in `_all_files.tap` |
-| other types (`Q`, `M`, `D`, …) | raw file |
-
-The tool is pure Python 3.10+ and has no dependencies.
-
-## Usage
+The earlier PC converter (disk files to `.z80`/`.tap`) has been removed. What is left of the Python package `d80tool` supports `.d80`: the MDOS image reader, the patch builder, the Next model used by the tests, and one command:
 
 ```sh
-python -m d80tool list images/021.d80                 # directory, broken files are marked
-python -m d80tool basic images/021.d80 HEXAGONIA      # BASIC listing
-python -m d80tool extract images/*.d80 -o extracted   # raw files
-python -m d80tool convert images/*.d80 -o out [--sna] # .z80 / .tap + report.md per disk
-python -m d80tool snap SNAPSHOT00.S -o out [--sna]    # standalone SNAP-button files -> .z80/.sna
 python -m d80tool new blank.d80 [--name X]           # blank formatted image (*.d40: 360K D40, else 720K D80)
 ```
 
-`convert` writes `out/<disk>/report.md` for each disk. It holds every file, every BASIC listing, the files each program tape contains, and hints when a loader still needs MDOS (for example `OUT 145`/`153`, `CAT`, or `*` commands that were left in place).
-
-Copy the resulting `.z80` / `.tap` files to the Next's SD card and open them from the NextZXOS browser.
+It is pure Python 3.10+ with no dependencies.
 
 ## Running images directly on the Next: `.d80`
 
-The `.d80` dot command boots a disk image on the Next with the real **MDOS 1.0**. Disk menus, multi-load games and `CAT`/`LOAD *`/`RUN` work as they do on a Didaktik 80. The converter cannot handle these.
+The `.d80` dot command boots a disk image on the Next with the real **MDOS 1.0**. Disk menus, multi-load games and `CAT`/`LOAD *`/`RUN` work as they do on a Didaktik 80.
 
 ```
 .d80 /d80/021.d80                       ; then RUN, CAT, LOAD *"name" ...
@@ -81,7 +61,6 @@ What a short press does:
 - Without `-w`, the file goes only to the RAM copy of the image. With `-w`, it is written to the image on the SD card.
 - As on the Didaktik, the button is ignored while MDOS itself runs (for example during `LOAD *` or `CAT`).
 - `LOAD *"SNAPSHOT00"` loads the snapshot back.
-- `python -m d80tool convert` turns it into `.z80`.
 
 Details: [docs/plan-d80-snap.md](docs/plan-d80-snap.md).
 
@@ -117,55 +96,24 @@ python tools/zesarux_next_check.py out/_next --mdos MDOS.rom --image images/021.
 
 ZEsarUX 13 runs the dot command up to `JP 0`, but it does not emulate the programmable DivMMC entry points (NextReg `#B8`–`#BB`). Checked on a real Next: it works, and so does writing with `-w`.
 
-## Checking results without an emulator
+## Emulator helpers
 
-`d80tool.emu48` is a minimal 48K Spectrum harness built on the bundled Python Z80 core. It needs a standard 48K ROM file, which is not included.
+`d80tool.emu48` is a minimal 48K Spectrum harness built on the bundled Python Z80 core; `d80tool.nextmmu` builds the Next model of `.d80` on it (`tools/preview_d80.py`). Both need a standard 48K ROM file, which is not included.
 
-```sh
-python tools/preview_snapshots.py path/to/48.rom out/_preview images/041-games128.d80
-python tools/preview_tap.py path/to/48.rom out/_preview 600 out/021/HEXAGONIA.tap
-```
+### ZEsarUX (headless)
 
-The scripts render the Spectrum screen to PNG files.
-
-### Testing in ZEsarUX (headless)
-
-ZEsarUX 13.0 (Windows build) lives in `emulators/ZEsarUX/` and is ignored by git. `tools/zesarux_check.py` starts it with no video and no audio, passes the file on the command line (snapshots load directly, tapes autoload), waits, saves the screen via ZRCP `save-screen` and renders it to PNG:
-
-```sh
-python tools/zesarux_check.py --seconds 6  out/_zesarux out/029-GAMES/TURRICAN1+.z80
-python tools/zesarux_check.py --seconds 25 out/_zesarux out/021/HEXAGONIA.tap
-```
-
-For the Next machine (TBBlue with a NextZXOS SD image), use `tools/zesarux_next_check.py`; see the `.d80` section above.
-
-Results so far:
-
-| File | Result |
-|---|---|
-| Turrican, Saboteur 1, Saboteur 2, Falling Down snapshots | Run (title or in-game screens) |
-| 027 SNAPSHOT00 | Almost blank screen, as in the harness |
-| HEXAGONIA, TOTALRECAL tapes | Reach their title screens |
-| DUCK OUT tape | Shows its intro |
-| EXPEDICE, MAH JONGG tapes | Proxima intros, same as the originals (after the length-preserving fix) |
+ZEsarUX 13.0 (Windows build) lives in `emulators/ZEsarUX/` and is ignored by git. `tools/zesarux_check.py` starts it with no video and no audio, loads a snapshot or tape, saves the screen via ZRCP `save-screen` and renders it to PNG. `tools/zesarux_next_check.py` builds on it for the Next machine (TBBlue with a NextZXOS SD image); see the `.d80` section above.
 
 ### Reference runs with real MDOS (Fuse)
 
 Fuse 1.10.1 in `emulators/fuse/` emulates the Didaktik 80 interface. The MDOS ROMs downloaded from cygnus.speccy.cz are kept in `emulators/roms/`, which git ignores; they are copyrighted, so they are not distributed with the tool. Fuse expects the 14 KB MDOS 1.0 ROM as `emulators/fuse/roms/didaktik80.rom`.
 
-`tools/fuse_check.py` boots an original image, types keys into the Fuse window only, and captures that window (not the desktop):
+`tools/fuse_check.py` boots an original image, types keys into the Fuse window only, and captures that window (not the desktop). Its captures are the reference for `.d80`:
 
 ```sh
 python tools/fuse_check.py --disk images/021.d80 --keys "R,ENTER" --seconds 12 out/_fuse              # disk menu
 python tools/fuse_check.py --disk images/021.d80 --keys "R,ENTER,WAIT4,D" --seconds 20 out/_fuse      # HEXAGONIA
 ```
-
-| Program (disk 021) | Original + MDOS (Fuse) | Converted TAP (ZEsarUX) |
-|---|---|---|
-| HEXAGONIA | Title menu | Same title menu ✔ |
-| EXPEDICE | Proxima intro | Same ✔ |
-| MAH JONGG | Proxima "Universum" intro | Same ✔ |
-| 027 SNAPSHOT00, FALINGDOWN (snapshots) | Loaded with `LOAD *"…"` | Same ✔ |
 
 ## Tests
 
@@ -175,7 +123,7 @@ python -m unittest discover -s tests -t .
 
 ## Format notes
 
-See [docs/research-report.md](docs/research-report.md) [docs/mdos10-notes.md](docs/mdos10-notes.md) (MDOS 1.0 disassembly) and [docs/snap-button.md](docs/snap-button.md) (how the SNAP button works and how to convert its files). The MDOS facts that were verified on the sample images are:
+See [docs/research-report.md](docs/research-report.md) [docs/mdos10-notes.md](docs/mdos10-notes.md) (MDOS 1.0 disassembly) and [docs/snap-button.md](docs/snap-button.md) (how the SNAP button works). The MDOS facts that were verified on the sample images are:
 
 - **Image layout:** a linear dump of 512-byte logical sectors (80 tracks × 2 sides × 9 sectors). The boot sector holds the `SDOS` signature.
 - **FAT:** sectors 1–5, with **341 entries per sector**. Each sector holds 170 triplets `(loA, hiA<<4|hiB, loB)`, plus one extra entry in its last two bytes `(lo, hi<<4|0xD)`. Values: 0xDDD = reserved, 0xE00+n = end of file with n bytes in the last sector (n = 0 means 512).
@@ -209,10 +157,3 @@ See [docs/research-report.md](docs/research-report.md) [docs/mdos10-notes.md](do
 | 0x3FE8 | F/I from `LD A,I` (P/V = IFF2) |
 
   PC is on the program's stack. IM is 1 if I = 0x3F, otherwise IM 2. Compressed snapshots (SNAPSHOT-PACKER v1.2, R. Kralovic 1992) are unpacked by running their own stub in the Z80 core.
-
-## Known limitations
-
-- **Machine code that uses MDOS at runtime** cannot work from tape. This covers in-game multi-load, disk menus such as `run`, and copy or save tools. The full MDOS approach (option 3 in the research report) would be needed.
-- **BASIC loaders with machine code behind the program:** these are common (Proxima). They are why the `LOAD *` rewrite must never change any lengths.
-- **Broken files:** a few directory entries on the sample disks point to overwritten FAT chains. They are reported as broken and skipped.
-- **Snapshot details:** the R register and the border colour are not stored in MDOS snapshots. The tool uses R = 0 and takes the border from BORDCR.

@@ -85,14 +85,9 @@ This is exactly the .SNA convention: registers in a header, PC on the stack. Con
 
 Compressed snapshots made by **SNAPSHOT-PACKER v1.2** (R. Kralovic 1992, `!KOMPRESOR` on disk 041) or **PACKSNAP** (on disk 027) are shorter `S` files. They contain a fake register block whose PC points at a self-extracting stub, followed by RLE data. The stub restores the real register block to `#3F80` and finally jumps to `#034D`. `d80tool` runs the stub in its Z80 core and so recovers the original 49280-byte snapshot.
 
-### Commands
+### Conversion
 
-```sh
-python -m d80tool convert disk.d80 -o out [--sna]              # all files on a disk, including S files
-python -m d80tool snap SNAPSHOT00.S MYGAME.S -o out [--sna]    # standalone SNAP files (raw or packed)
-```
-
-Both produce `.z80` (v1, 48K, uncompressed), which the ZX Spectrum Next (NextZXOS browser), ZEsarUX, Fuse and other emulators load.
+The `convert` and `snap` commands that turned `S` files into `.z80`/`.sna` were removed together with the PC converter (2026-11-16). `d80tool.snapshot` (`parse`, `to_z80`, `to_sna`) is still there; the tests and `tools/fuse_snap_roundtrip.py` use it.
 
 ### Verification
 
@@ -113,6 +108,6 @@ On the Next, the **DRIVE** button (DivMMC NMI) is the SNAP button. MDOS runs the
 2. **Machine › Didaktik SNAP** is pressed.
 3. MDOS writes `SNAPSHOT00` (49 280 B) to the disk, and the game continues; the title scroller keeps moving.
 4. The disk image is saved through **Media › Disk › Didaktik 80 › Drive A › Save**.
-5. `d80tool` converts the snapshot.
+5. `d80tool.snapshot` converts the snapshot.
 
 The snapshot caught the program at the entry of its IM 2 interrupt (PC=`#FFFF`, I=`#3A`, interrupts disabled because the interrupt had just been accepted). In ZEsarUX the converted `.z80` continues exactly where it was snapped: the HEXAGONIA title screen with its scroller running.

@@ -1,4 +1,6 @@
-# Plan: Option 1, part 1 — Python converter (status 2026-11-16: done, no further development)
+# Plan: Option 1, part 1 — Python converter (status 2026-11-16: removed; kept as history)
+
+> The converter CLI (`list`/`basic`/`extract`/`convert`/`snap`), `d80tool.basic`, `d80tool.tape` and the converter check tools (`batch_check`, `zesarux_batch`, `preview_tap`, `preview_snapshots`) were removed on 2026-11-16. `d80tool.image`, `snapshot`, `emu48`, `z80mini` and `z80dis` stay because `.d80` and its tests use them.
 
 ## Goal
 Use the sample images in `images/` to learn the real MDOS structure. Then write Python that extracts MDOS files and converts them into formats the ZX Spectrum Next loads, and check that the results run.

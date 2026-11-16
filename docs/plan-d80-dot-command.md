@@ -66,7 +66,7 @@ The patches are generated from `dot/mdospatch.asm`: `tools/build_dot.py` assembl
 - **MDOS 2.0 (D80 v2, 8272 FDC):** not needed; the images run with MDOS 1.0.
 
 ## Verification
-- `python -m unittest discover -s tests -t .`: 43 tests. They include a model boot with `CAT` on disk 021, SD write-through and FORMAT (`TestSdWrite`), SNAP (`TestSnap`), blank images (`TestBlank`), drive B: (`TestDriveB`) and the menu (`TestMenu`).
+- `python -m unittest discover -s tests -t .`: 39 tests. They include a model boot with `CAT` on disk 021, SD write-through and FORMAT (`TestSdWrite`), SNAP (`TestSnap`), blank images (`TestBlank`), drive B: (`TestDriveB`) and the menu (`TestMenu`).
 - `python tools/build_dot.py` writes `dot/build/patches.json`, `patches.inc` and `D80`.
 - `python tools/preview_d80.py <mdos.rom> <48.rom> out/x images/021.d80 --keys R,ENTER,WAIT6,D`
 - `python tools/zesarux_next_check.py out/_next --mdos <mdos.rom> --image images/021.d80 --steps "wait:40,shot:boot"`
