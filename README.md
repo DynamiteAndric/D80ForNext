@@ -1,4 +1,4 @@
-#Didaktik D40/D80 disk images on the ZX Spectrum Next
+# Didaktik D40/D80 disk images on the ZX Spectrum Next
 
 My first computer was a Czechoslovak Didaktik Gama, later with a 5.25" disk drive, the D40. When I started playing with the ZX Spectrum Next, I found there was no simple way to run those disk images on it. So I created this project: a simple dot command that opens those images on the ZX Spectrum Next.
 
