@@ -42,6 +42,7 @@ Pure Python 3.10+ with no dependencies. Run the scripts from the project root as
 | `new_image.py` | Creates a blank formatted image on a PC, as `.d80 -n` does |
 | `image.py` | Reader for MDOS disk images (geometry, FAT, directory, files), `blank_image` and `add_file` |
 | `basic.py` | Tokenizes 48K BASIC source text into a program, as `SAVE` stores it |
+| `make_release.py` | Builds the `dist/` zip and publishes a GitHub release |
 | `demo_image.py` | Builds the demo disk `dist/d80/demo.d80` (BASIC menu, IM 2 machine-code demo, data files) |
 | `mdospatch.py` | Applies the `.d80` patches to a user-supplied MDOS ROM and lays out the RAM pages |
 | `nextmmu.py` | Python model of the `.d80` runtime on the Next (DivMMC automap, NextRegs, SD card), used by the tests |
@@ -54,6 +55,26 @@ Pure Python 3.10+ with no dependencies. Run the scripts from the project root as
 | `fuse_check.py`, `fuse_snap_roundtrip.py` | Reference runs of disk images with the real Didaktik 80 in Fuse, and a SNAP round trip |
 
 The model and the emulator scripts need a standard 48K ROM and the MDOS ROM, which are not included.
+
+## Releases
+
+`tools/make_release.py` builds the SD card package and publishes it as a GitHub release (needs the `gh` CLI, logged in):
+
+```sh
+python tools/make_release.py v1.0.0 --dry-run    # only build out/d80-v1.0.0.zip
+python tools/make_release.py v1.0.0              # tag, push the tag, create the release with the zip
+```
+
+It only releases from a clean `main` that matches `origin/main`. It rebuilds `dist/` and stops if that changes a committed file, runs the tests, and zips `dist/` from `HEAD` with `git archive`, so ignored files such as the MDOS ROM never get in. Release notes come from the commits, or from `--notes`/`--notes-file`; `--draft` creates a draft.
+
+Alternatively, push only a tag and let GitHub build the release (`.github/workflows/release.yml`):
+
+```sh
+git tag -a v1.0.0 -m "Release v1.0.0"
+git push origin v1.0.0
+```
+
+The workflow checks that the tag is on `main`, runs `make_release.py --package-only` (demo disk check, tests, zip) and creates the release with generated notes. The runner has neither sjasmplus nor the ROMs, so it packages the committed `dist/dot/D80` and skips the ROM tests: build and run the full tests locally before tagging.
 
 ## Tests
 

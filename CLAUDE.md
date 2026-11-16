@@ -15,6 +15,7 @@ python tools/build_dot.py                      # assemble dot/*.asm -> dot/build
 python -m unittest discover -s tests -t .      # all tests (~4 min; the Z80 model is slow)
 python -m unittest tests.test_d80dot.TestSnap.test_snap_saves_running_program   # one test
 python tools/demo_image.py dist/d80/demo.d80   # rebuild the demo disk after changing the generator
+python tools/make_release.py v1.0.0 --dry-run # build out/d80-v1.0.0.zip; without --dry-run also tag + GitHub release
 python tools/preview_d80.py MDOS.rom 48.rom out/x dist/d80/demo.d80 --keys R,ENTER,WAIT3,A   # boot in the Python model, save PNGs
 python tools/zesarux_next_check.py out/x --mdos MDOS.rom --image dist/d80/demo.d80 --steps "wait:40,shot:boot"   # ZEsarUX (Next), loader only
 ```
