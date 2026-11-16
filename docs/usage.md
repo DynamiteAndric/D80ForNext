@@ -10,6 +10,7 @@ Copy the contents of `dist/` to the root of the Next SD card:
 |---|---|
 | `/dot/D80` | the dot command |
 | `/sys/d80/mdos10.rom` | the MDOS 1.0 ROM — **not included**, see below |
+| `/sys/d80/gama.rom`, `didm.rom`, `kompakt.rom` | optional Didaktik ROMs for the machine menu — **not included**, see below |
 | `/d80/demo.d80` | a demo disk (`RUN` starts its menu) |
 
 The MDOS ROM is copyrighted and not distributed. Download `Didaktik_40-80_MDOS_v1_91.rom` (MDOS 1.0, 1991; 14,336 bytes, CRC32 `545531FA`) from the ROM page of [cygnus.speccy.cz](https://cygnus.speccy.cz/download_roms.php) and save it as `/sys/d80/mdos10.rom`.
@@ -27,7 +28,7 @@ The standard 48K ROM is taken from `/machines/next/48.rom`, which is part of the
 | `-w` | write disk changes back to the image file on the SD card |
 | `-n` | create the image name that follows it as a blank formatted disk |
 | `-r file` | MDOS ROM to use instead of `/sys/d80/mdos10.rom` |
-| `-4 file` | 48K ROM to use instead of `/machines/next/48.rom`, or a Didaktik ROM (see below) |
+| `-4 file` | 16K ROM to use (the 48K ROM or a Didaktik ROM, see below) without the machine menu |
 
 Examples:
 
@@ -41,15 +42,22 @@ Examples:
 .d80 -w /d80/demo.d80 -n /d80/data.d80  ; ... created blank first
 ```
 
-While loading, `.d80` shows a window in the style of the 128 menu. It reports each step: the ROM checks, then each image with a progress bar, and `New disk …` when `-n` creates one. When everything is ready it shows `Press any key`; the next key starts MDOS.
+Without `-4`, `.d80` first asks for the machine (see below). ENTER takes the ZX Spectrum 48K. While loading, `.d80` shows a window in the style of the 128 menu. It reports each step: the ROM checks, then each image with a progress bar, and `New disk …` when `-n` creates one. When everything is ready it shows `Press any key`; the next key starts MDOS.
 
-## Didaktik Gama, M and Kompakt ROMs (`-4`)
+## Machine menu: Didaktik Gama, M and Kompakt ROMs
 
-`-4` also takes the BASIC ROM of a Didaktik computer instead of the Sinclair 48K ROM. The Next then starts with the Didaktik copyright message, its font and its BASIC changes. MDOS works the same way, because these ROMs keep every 48K ROM address MDOS uses.
+Without `-4`, `.d80` first shows a machine menu:
 
-```
-.d80 -4 /sys/d80/gama.rom /d80/demo.d80
-```
+| Key | Machine | ROM file |
+|---|---|---|
+| `1` | ZX Spectrum 48K | `/machines/next/48.rom` |
+| `2` | Didaktik Gama | `/sys/d80/gama.rom` |
+| `3` | Didaktik M | `/sys/d80/didm.rom` |
+| `4` | Didaktik Kompakt | `/sys/d80/kompakt.rom` |
+
+Press a digit, or move the bar with the cursor keys (`6`/`7`) and press ENTER. ENTER alone takes the ZX Spectrum 48K. `-4 file` skips the menu and uses that file. For example, `.d80 -4 /sys/d80/kompakt.rom /d80/demo.d80` starts a Didaktik Kompakt directly.
+
+With a Didaktik ROM, the Next starts with the Didaktik copyright message, its font and its BASIC changes. MDOS works the same way, because these ROMs keep every 48K ROM address MDOS uses. If the chosen ROM file is missing, `.d80` stops with `File not found`.
 
 `.d80` checks the ROM by CRC32 and accepts:
 
@@ -60,7 +68,7 @@ While loading, `.d80` shows a window in the style of the 128 menu. It reports ea
 | Didaktik M 1992 (`Didaktik_M_1992.rom`) | `57264D4F` |
 | Didaktik Kompakt 1993 (`Didaktik_Kompakt_93.rom`) | `34752ABA` |
 
-Download the Didaktik ROMs from the same [cygnus.speccy.cz](https://cygnus.speccy.cz/download_roms.php) page as MDOS. Any other ROM stops with `Not a 48K ROM`. To add one, check it with `python tools/romcompat.py mdos10.rom 48.rom new.rom` and add its CRC to `rom48_crcs` in `dot/d80.asm` (see `docs/plan-didaktik-machines.md`). These ROMs are copyrighted and not included.
+Download the Didaktik ROMs from the same [cygnus.speccy.cz](https://cygnus.speccy.cz/download_roms.php) page as MDOS. Save them under the short names from the menu table: `Didaktik_Gama_1989.rom` as `gama.rom`, `Didaktik_M_1992.rom` as `didm.rom` and `Didaktik_Kompakt_93.rom` as `kompakt.rom`. Any other ROM stops with `Unknown machine ROM`. To add one, check it with `python tools/romcompat.py mdos10.rom 48.rom new.rom` and add its CRC to `rom48_crcs` in `dot/d80.asm` (see `docs/plan-didaktik-machines.md`). These ROMs are copyrighted and not included.
 
 Differences from the real machines:
 

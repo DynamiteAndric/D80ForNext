@@ -7,6 +7,9 @@ Copy the contents of this folder to the root of the Next SD card:
   /sys/d80/mdos10.rom    MDOS 1.0 ROM (Didaktik_40-80_MDOS_v1_91.rom, CRC32 545531FA),
                          not included; download it from
                          https://cygnus.speccy.cz/download_roms.php
+  /sys/d80/gama.rom      optional Didaktik ROMs for the machine menu, not
+  /sys/d80/didm.rom      included (Didaktik_Gama_1989.rom, Didaktik_M_1992.rom,
+  /sys/d80/kompakt.rom   Didaktik_Kompakt_93.rom from the same page)
   /d80/demo.d80          a demo disk (RUN starts its menu)
 
 The standard 48K ROM is taken from /machines/next/48.rom, which is part of
@@ -25,7 +28,8 @@ Usage (NextBASIC or the command line):
   .d80 "c:/my disks/game.d80"            (quotes allow spaces and ':')
 
 While loading, a window shows each step with a progress bar. When all is
-ready it says "Press any key"; the next key starts MDOS.
+ready it says "Press any key"; the next key starts MDOS. Without -4 it
+first asks for the machine (see below).
 
 Writing to the SD card (-w):
   Without -w, disk writes change only the RAM copy and are lost on reset.
@@ -41,13 +45,16 @@ Blank disks (-n):
   is the file name (up to 10 characters). An existing file is never
   overwritten: .d80 stops with "File exists".
 
-Didaktik ROMs (-4):
-  -4 also takes the BASIC ROM of a Didaktik computer instead of the 48K ROM:
-    .d80 -4 /sys/d80/gama.rom /d80/demo.d80
+Machine menu (Didaktik ROMs):
+  Without -4, .d80 first asks for the machine: 1 ZX Spectrum 48K
+  (/machines/next/48.rom), 2 Didaktik Gama (/sys/d80/gama.rom), 3 Didaktik M
+  (/sys/d80/didm.rom), 4 Didaktik Kompakt (/sys/d80/kompakt.rom). Press the
+  digit, or the cursor keys and ENTER; ENTER alone takes the 48K. -4 file
+  skips the menu:  .d80 -4 /sys/d80/kompakt.rom /d80/demo.d80
   Accepted by CRC32 (Didaktik ROMs from cygnus.speccy.cz, see above):
   Sinclair 48K (DDEE531F), Didaktik_Gama_1989.rom (45C29401),
   Didaktik_M_1992.rom (57264D4F), Didaktik_Kompakt_93.rom (34752ABA).
-  Other ROMs stop with "Not a 48K ROM". Not emulated: the
+  Other ROMs stop with "Unknown machine ROM". Not emulated: the
   Gama's second 32K bank (OUT 95,1), the 8255 printer port, and the
   Didaktik ULA timing (the Next uses 48K timing). OUT 31 also drives the
   Next's DAC A if the DACs are enabled. The ROMs are not included.

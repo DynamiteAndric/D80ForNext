@@ -9,8 +9,10 @@
 ;   -n  create the image that follows as a blank formatted 720K D80 disk first
 ;       ("File exists" if it is there already)
 ;
-; Loads the MDOS 1.0 ROM (default c:/sys/d80/mdos10.rom) and the standard
-; 48K ROM (default c:/machines/next/48.rom) or, with -4, a Didaktik Gama/M/Kompakt ROM,
+; Loads the MDOS 1.0 ROM (default c:/sys/d80/mdos10.rom) and the 16K ROM:
+; with -4 the given file, otherwise the machine menu asks for one of
+; c:/machines/next/48.rom (ZX Spectrum 48K) or c:/sys/d80/gama.rom, didm.rom,
+; kompakt.rom (Didaktik Gama, M, Kompakt); it
 ; checks both by CRC32 (rom48_crcs lists the accepted 16K ROMs), applies the
 ; patches from mdospatch.asm and loads the image into allocated 8K pages.
 ; Then it turns the Next into a 48K Spectrum with a Didaktik 80 (see
@@ -77,6 +79,7 @@ start:
     jp restore_ok
 .have:
     call screen_init                    ; the progress window
+    call choose_rom                     ; no -4: choose the machine
 
     nextreg #7F,#02
 ; ---- MDOS ROM -> pages P_A (#0000-#1FFF) and P_B (#2000-#37FF + RAM) -----
@@ -101,7 +104,7 @@ start:
     ld hl,WIN+#1800 : ld de,WIN+#1801 : ld bc,#07FF : ld (hl),0 : ldir
 
     nextreg #7F,#04
-; ---- 48K ROM -> pages R0, R1 (goes into the alternate ROM) ---------------
+; ---- machine ROM (48K or Didaktik) -> pages R0, R1 (goes into the alternate ROM) ---------------
     ld hl,msg_rom_4 : call say
     ld hl,name_48 : call fopen
     nextreg #7F,#41
@@ -406,9 +409,10 @@ apply:
     jr apply
 
 ; ---- CRC32 (reflected, poly #EDB88320), table-driven ----------------------------
-; The table is built at CRC_TAB (1K after the binary, 256-aligned) as four
-; 256-byte planes: byte k of entry i at CRC_TAB + k*256 + i.  The area is
-; reused for sd_buf after the ROM checks.
+; The table is built at CRC_TAB (256-aligned, over the code and data from
+; `once` on, which are not needed any more) as four 256-byte planes: byte k
+; of entry i at CRC_TAB + k*256 + i.  The area is reused for sd_buf after the
+; ROM checks.
 crc_init:
     ld hl,#FFFF : ld (crc),hl : ld (crc+2),hl
     ld a,(crc_ready) : and a : ret nz   ; the table is built once
@@ -772,7 +776,9 @@ parse:
     jr .next
 .not_n:
     ld de,name_mdos : cp 'r' : jr z,.opt
-    ld de,name_48 : cp '4' : jr z,.opt
+    ld de,name_48 : cp '4' : jr nz,.usage
+    ld (flag_4),a
+    jr .opt
 .usage:
     ld hl,msg_usage : scf : ret
 .opt:
@@ -1030,11 +1036,13 @@ msg_exists: db "File exist", 's'|#80
 msg_hello:  db 22,WIN_T,2, 20,0,21,0,18,0,19,1, 17,0,16,7, "Didaktik D80 MDOS 1.0"
             db 17,7,16,0, 13|#80          ; (AT, INVERSE 0, OVER 0, FLASH 0, BRIGHT 1, colours)
 msg_key:    db 22,WIN_B-1,9, "Press any ke", 'y'|#80
+choice:     db 0
+flag_4:     db 0                        ; -4 given: no machine menu
 line:       db WIN_T+1                  ; window row of the text
 stripe_attr: db #50, #72, #66, #6C, #45  ; rainbow: ink = colour on the left, paper = on the right
 diagonal:   db #FE, #FC, #F8, #F0, #E0, #C0, #80, #00
 msg_rom_m:  db "MDOS RO", 'M'|#80
-msg_rom_4:  db "48K RO", 'M'|#80
+msg_rom_4:  db "Machine RO", 'M'|#80
 msg_ok:     db " ok", 13|#80
 msg_colon:  db ":", ' '|#80
 msg_new:    db "New", ' '|#80             ; (+ a 10-character name: still left of the bar)
@@ -1046,7 +1054,7 @@ msg_open:   db "File not foun", 'd'|#80
 msg_read:   db "Read erro", 'r'|#80
 msg_short:  db "File too shor", 't'|#80
 msg_mdos:   db "Not MDOS 1.0 RO", 'M'|#80
-msg_48:     db "Not a 48K RO", 'M'|#80
+msg_48:     db "Unknown machine RO", 'M'|#80
 msg_img:    db "Not an MDOS dis", 'k'|#80
 msg_big:    db "Image too bi", 'g'|#80
 msg_fmap:   db "Image not mappable on SD car", 'd'|#80
@@ -1104,9 +1112,75 @@ MENU_FONT   equ #0C00                   ; = FONT - #E000 in menu.asm
 menu_bin:   INCBIN "build/menu.bin"     ; the D80 menu (dot/menu.asm)
 menu_len    equ $-menu_bin
 
+; Used only before the ROMs are checked: the CRC table may overwrite it.
+once:
+; ---- machine menu (no -4): which 16K ROM goes into the alternate ROM ----------
+; Keys 1-4 choose directly; 6/7 (cursor keys) move the bar, ENTER takes it.
+; A Didaktik choice puts c:/sys/d80/<file> into name_48, then the window is
+; drawn again.
+N_ROMS      equ 4
+ROM_ROW     equ WIN_T+4                 ; first item row
+
+choose_rom:
+    ld a,(flag_4) : and a : ret nz
+    ld hl,msg_choose : call say
+    xor a : ld (choice),a
+.draw:
+    ld bc,N_ROMS<<8 | ROM_ROW : ld e,0  ; B = items, C = row, E = item
+.d: push bc : push de
+    ld a,(choice) : cp e
+    ld a,#78 : jr nz,.n                 ; body: white paper, black ink
+    ld a,#68                            ; the bar: cyan paper
+.n: call row_fill
+    pop de : pop bc
+    inc c : inc e
+    djnz .d
+.rel: xor a : in a,(#FE) : cpl : and #1F : jr nz,.rel
+.scan:
+    ld a,#F7 : in a,(#FE) : cpl : and #0F : jr nz,.digit   ; 1-4
+    ld a,#BF : in a,(#FE) : rra : jr nc,.take               ; ENTER
+    ld a,#EF : in a,(#FE)
+    bit 4,a : jr z,.down                                    ; 6
+    bit 3,a : jr z,.up                                      ; 7
+    jr .scan
+.digit:
+    ld e,-1
+.dl: inc e : rra : jr nc,.dl
+    ld a,e : ld (choice),a
+    jr .take
+.up:
+    ld a,(choice) : and a : jr z,.draw
+    dec a : ld (choice),a : jr .draw
+.down:
+    ld a,(choice) : cp N_ROMS-1 : jr z,.draw
+    inc a : ld (choice),a : jr .draw
+.take:
+    ld a,(choice) : and a : jr z,.new   ; the 48K ROM: name_48 as it is
+    add a,a
+    ld l,a : ld h,0 : ld de,rom_files-2 : add hl,de
+    ld a,(hl) : inc hl : ld h,(hl) : ld l,a
+    push hl
+    ld hl,rom_dir : ld de,name_48 : ld bc,11 : ldir
+    pop hl
+.c: ld a,(hl) : ld (de),a : inc hl : inc de
+    and a : jr nz,.c
+.new:
+    ld a,WIN_T+1 : ld (line),a          ; a clean window for the progress report
+    jp screen_init
+
+msg_choose: db "Machine (1-4):", 13, 13   ; (on the line after the title: ROM_ROW-2)
+            db "1 ZX Spectrum 48K", 13, "2 Didaktik Gama", 13
+            db "3 Didaktik M", 13, "4 Didaktik Kompak", 't'|#80
+rom_files:  dw name_gama, name_didm, name_kompakt
+rom_dir:    db "c:/sys/d80/"
+name_gama:  db "gama.rom", 0            ; Didaktik_Gama_1989.rom
+name_didm:  db "didm.rom", 0            ; Didaktik_M_1992.rom
+name_kompakt: db "kompakt.rom", 0       ; Didaktik_Kompakt_93.rom
 end:
-sd_buf      equ end                     ; 512 bytes after the binary (and the font copy)
-CRC_TAB     equ (end+255) & #FF00       ; CRC table (only while the ROMs are checked)
-    ASSERT end+1024 <= #3E00, dot command too big
+; After the ROM checks the same area holds sd_buf (a sector, the font copy).
+sd_buf      equ once                    ; 512 bytes (768 for the font copy)
+CRC_TAB     equ (once+255) & #FF00      ; CRC table (only while the ROMs are checked)
+    ASSERT end <= #3E00, dot command too big
+    ASSERT once+1024 <= #3E00, no room for sd_buf
     ASSERT CRC_TAB+1024 <= #3E00, no room for the CRC table
     SAVEBIN "build/D80", start, end-start
