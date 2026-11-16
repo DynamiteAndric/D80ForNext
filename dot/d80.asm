@@ -1115,26 +1115,19 @@ menu_len    equ $-menu_bin
 ; Used only before the ROMs are checked: the CRC table may overwrite it.
 once:
 ; ---- machine menu (no -4): which 16K ROM goes into the alternate ROM ----------
-; Keys 1-4 choose directly; 6/7 (cursor keys) move the bar, ENTER takes it.
-; A Didaktik choice puts c:/sys/d80/<file> into name_48, then the window is
-; drawn again.
+; The items are the first lines of the progress window; the bar stays on the
+; choice and the progress report goes on below them.  Keys 1-4 choose
+; directly; 6/7 (cursor keys) move the bar, ENTER takes it.  A Didaktik
+; choice puts c:/sys/d80/<file> into name_48.
 N_ROMS      equ 4
-ROM_ROW     equ WIN_T+4                 ; first item row
+ROM_ROW     equ WIN_T+2                 ; first item row (the first window line)
 
 choose_rom:
     ld a,(flag_4) : and a : ret nz
-    ld hl,msg_choose : call say
+    ld hl,msg_choose : call say         ; the items, then a blank line
     xor a : ld (choice),a
-.draw:
-    ld bc,N_ROMS<<8 | ROM_ROW : ld e,0  ; B = items, C = row, E = item
-.d: push bc : push de
-    ld a,(choice) : cp e
-    ld a,#78 : jr nz,.n                 ; body: white paper, black ink
-    ld a,#68                            ; the bar: cyan paper
-.n: call row_fill
-    pop de : pop bc
-    inc c : inc e
-    djnz .d
+.loop:
+    call .bar
 .rel: xor a : in a,(#FE) : cpl : and #1F : jr nz,.rel
 .scan:
     ld a,#F7 : in a,(#FE) : cpl : and #0F : jr nz,.digit   ; 1-4
@@ -1147,15 +1140,16 @@ choose_rom:
     ld e,-1
 .dl: inc e : rra : jr nc,.dl
     ld a,e : ld (choice),a
+    call .bar
     jr .take
 .up:
-    ld a,(choice) : and a : jr z,.draw
-    dec a : ld (choice),a : jr .draw
+    ld a,(choice) : and a : jr z,.loop
+    dec a : ld (choice),a : jr .loop
 .down:
-    ld a,(choice) : cp N_ROMS-1 : jr z,.draw
-    inc a : ld (choice),a : jr .draw
+    ld a,(choice) : cp N_ROMS-1 : jr z,.loop
+    inc a : ld (choice),a : jr .loop
 .take:
-    ld a,(choice) : and a : jr z,.new   ; the 48K ROM: name_48 as it is
+    ld a,(choice) : and a : ret z       ; the 48K ROM: name_48 as it is
     add a,a
     ld l,a : ld h,0 : ld de,rom_files-2 : add hl,de
     ld a,(hl) : inc hl : ld h,(hl) : ld l,a
@@ -1164,13 +1158,22 @@ choose_rom:
     pop hl
 .c: ld a,(hl) : ld (de),a : inc hl : inc de
     and a : jr nz,.c
-.new:
-    ld a,WIN_T+1 : ld (line),a          ; a clean window for the progress report
-    jp screen_init
+    ret
+; the bar on item (choice), the other items white
+.bar:
+    ld bc,N_ROMS<<8 | ROM_ROW : ld e,0  ; B = items, C = row, E = item
+.d: push bc : push de
+    ld a,(choice) : cp e
+    ld a,#78 : jr nz,.n                 ; body: white paper, black ink
+    ld a,#68                            ; the bar: cyan paper
+.n: call row_fill
+    pop de : pop bc
+    inc c : inc e
+    djnz .d
+    ret
 
-msg_choose: db "Machine (1-4):", 13, 13   ; (on the line after the title: ROM_ROW-2)
-            db "1 ZX Spectrum 48K", 13, "2 Didaktik Gama", 13
-            db "3 Didaktik M", 13, "4 Didaktik Kompak", 't'|#80
+msg_choose: db "1 ZX Spectrum 48K", 13, "2 Didaktik Gama", 13
+            db "3 Didaktik M", 13, "4 Didaktik Kompakt", 13, 13|#80
 rom_files:  dw name_gama, name_didm, name_kompakt
 rom_dir:    db "c:/sys/d80/"
 name_gama:  db "gama.rom", 0            ; Didaktik_Gama_1989.rom

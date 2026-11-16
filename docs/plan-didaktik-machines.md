@@ -31,7 +31,8 @@
 Added afterwards: without `-4` the loader shows a **machine menu**.
 - The choices are 48K, Gama, M and Kompakt, picked with keys 1–4 or the cursor keys and ENTER. ENTER alone takes the 48K.
 - The files are `c:/machines/next/48.rom` and `c:/sys/d80/{gama,didm,kompakt}.rom`. The names are 8.3 so the ZEsarUX test card, written by `fat16.py`, can hold them.
-- The menu code sits after `once` at the end of the binary. The CRC table and `sd_buf` overlay it once it has run, so the dot command still fits below `#3E00` (6,688 bytes).
+- The items are the first lines of the progress window. The bar stays on the choice, and the progress report continues below it (rows 11–16, enough for the 6 lines of `-n` on both drives).
+- The menu code sits after `once` at the end of the binary. The CRC table and `sd_buf` overlay it once it has run, so the dot command still fits below `#3E00` (6,683 bytes; `once` may grow to `#3A00` before the CRC table has to move).
 - Tested in ZEsarUX with `tools/zesarux_next_check.py --rom`.
 
 Changes from the plan below:
