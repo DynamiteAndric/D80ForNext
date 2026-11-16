@@ -1,4 +1,4 @@
-# Plan: Option 1, part 1 — Python converter (status 2026-11-15)
+# Plan: Option 1, part 1 — Python converter (status 2026-11-16: done, no further development)
 
 ## Goal
 Use the sample images in `images/` to learn the real MDOS structure. Then write Python that extracts MDOS files and converts them into formats the ZX Spectrum Next loads, and check that the results run.
@@ -37,11 +37,18 @@ Use the sample images in `images/` to learn the real MDOS structure. Then write 
       - `POKE #` statements (MDOS) are blanked; "Nonsense in BASIC" dropped from 33 to 2.
       - Harness: undocumented IXh/IXl instructions; `HALT` with interrupts disabled is recorded as a hang.
 
-## Next
-Done since:
-- Option 1, part 2, the `.d80` dot command ([plan-d80-dot-command.md](plan-d80-dot-command.md)), verified on a real Next. It runs the programs the converter cannot handle (MDOS menus, multi-load games, `CAT`/`MOVE`/`SAVE *`) with the real MDOS. So there is no need to analyse the MDOS calls of multi-load programs one by one.
+## Status: no further development (decided 2026-11-16)
+The `.d80` dot command ([plan-d80-dot-command.md](plan-d80-dot-command.md)) runs disk images with the real MDOS on the Next, including what the converter cannot handle (MDOS menus, multi-load games, `CAT`/`MOVE`/`SAVE *`). It is now the main way to run D40/D80 disks on the Next.
 
-Still open (optional, lower priority now that `.d80` exists):
-- Finish the ZEsarUX check: the 15 remaining programs (`--resume`, at most 4 parallel instances), plus the 128K programs on `--machine 128k`.
-- Check a sample of the "blank" and "reset" programs against Fuse + MDOS.
-- Batch-classify all 314 program tapes with the harness: blocks loaded and whether the screen changed.
+The PC converter stays as it is and is kept working, but gets no new features. It is still useful as a fallback:
+- on a Next with too little free RAM for `.d80` (a 720K image needs 90 free 8K pages);
+- for 128K programs (`.d80` is 48K only);
+- for files that open straight from the NextZXOS browser, or in emulators without Didaktik support;
+- for listing and extracting files on a PC.
+
+The `d80tool` package itself stays in active use: `image.py` (`blank_image`), `z80mini`, `nextmmu.py` and `mdospatch.py` are the model and patch builder behind `.d80`, its build (`tools/build_dot.py`) and its tests.
+
+Dropped (were optional):
+- finishing the ZEsarUX bulk check (the 15 programs from 042/043, the 128K programs on `--machine 128k`);
+- checking a sample of the "blank" and "reset" programs against Fuse + MDOS;
+- batch-classifying all 314 program tapes with the harness.
