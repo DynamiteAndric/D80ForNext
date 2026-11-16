@@ -27,7 +27,7 @@ The standard 48K ROM is taken from `/machines/next/48.rom`, which is part of the
 | `-w` | write disk changes back to the image file on the SD card |
 | `-n` | create the image name that follows it as a blank formatted disk |
 | `-r file` | MDOS ROM to use instead of `/sys/d80/mdos10.rom` |
-| `-4 file` | 48K ROM to use instead of `/machines/next/48.rom` |
+| `-4 file` | 48K ROM to use instead of `/machines/next/48.rom`, or a Didaktik ROM (see below) |
 
 Examples:
 
@@ -42,6 +42,30 @@ Examples:
 ```
 
 While loading, `.d80` shows a window in the style of the 128 menu. It reports each step: the ROM checks, then each image with a progress bar, and `New disk …` when `-n` creates one. When everything is ready it shows `Press any key`; the next key starts MDOS.
+
+## Didaktik Gama, M and Kompakt ROMs (`-4`)
+
+`-4` also takes the BASIC ROM of a Didaktik computer instead of the Sinclair 48K ROM. The Next then starts with the Didaktik copyright message, its font and its BASIC changes. MDOS works the same way, because these ROMs keep every 48K ROM address MDOS uses.
+
+```
+.d80 -4 /sys/d80/gama.rom /d80/demo.d80
+```
+
+`.d80` checks the ROM by CRC32 and accepts:
+
+| ROM | CRC32 |
+|---|---|
+| Sinclair 48K | `DDEE531F` |
+| Didaktik Gama '89 (`1989 DIDAKTIK SKALICA`) | `45C29401` |
+
+Any other ROM stops with `Not a 48K ROM`. To add one, check it with `python tools/romcompat.py mdos10.rom 48.rom new.rom` and add its CRC to `rom48_crcs` in `dot/d80.asm` (see `docs/plan-didaktik-machines.md`). These ROMs are copyrighted and not included.
+
+Differences from the real machines:
+
+- **Gama 80K:** the second 32K bank (`OUT 95,1`) is not emulated. The Next cannot intercept that port, so programs see only bank 0.
+- **8255 printer port:** there is none. `LPRINT`/`LLIST` through the 8255 do not print. `OUT 31` (`#1F`) also drives the Next's DAC A if the DACs are enabled.
+- **Timing:** the Next runs with 48K Sinclair timing, not the Didaktik ULA timing.
+- **Kompakt:** its built-in drive used MDOS 2.0. `.d80` runs MDOS 1.0 with the same 720K disks.
 
 ## Starting images from the NextZXOS browser
 
@@ -109,7 +133,7 @@ After a swap, MDOS reads the FAT and directory again. Disks addressed by *name* 
 
 ## Limits
 
-- 48K mode and MDOS 1.0 only. 128K mode and MDOS 2.0 are not planned.
+- 48K mode and MDOS 1.0 only. 128K mode is not planned; MDOS 2.0 is planned (`docs/plan-didaktik-machines.md`).
 - At most two drives (A:, B:).
 - A 720K image needs 90 free 8K pages; two images need a 2 MB Next.
 - `-w` needs an image in at most 128 fragments on the card.

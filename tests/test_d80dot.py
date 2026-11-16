@@ -20,6 +20,7 @@ from z80mini import Z80
 ROOT = Path(__file__).resolve().parents[1]
 MDOS = ROOT / "emulators" / "roms" / "Didaktik_40-80_MDOS_v1_91.rom"
 ROM48 = ROOT / "emulators" / "fuse" / "roms" / "48.rom"
+GAMA = ROOT / "emulators" / "specy" / "DIDAKTIK.ROM"   # Didaktik Gama '89 (optional)
 IMAGE = build_demo()
 SAMPLES = ROOT / "emulators" / "images"                # optional third-party disks
 SDCARD = ROOT / "emulators" / "ZEsarUX" / "tbblue.mmc"
@@ -105,6 +106,38 @@ FORMAT_TESTIK = [["CAPS", "SYM"], ["SYM", "0"], ["SYM", "P"], ["A"], ["SYM", "Z"
                  ["T"], ["E"], ["S"], ["T"], ["I"], ["K"], ["SYM", "P"], ["ENTER"]]
 D80_BIN = ROOT / "dot" / "build" / "D80"
 D80_SYM = ROOT / "dot" / "build" / "d80.sym"
+
+
+@unittest.skipUnless(have_all and GAMA.exists(), "Didaktik Gama ROM not present")
+class TestDidaktikRom(unittest.TestCase):
+    """A Didaktik ROM in place of the 48K ROM, as with .d80 -4 gama.rom."""
+
+    def test_romcompat(self):
+        from romcompat import check, ranges
+        self.assertEqual(check(ROM48.read_bytes(), GAMA.read_bytes(), ranges([MDOS.read_bytes()])), [])
+
+    def test_known_crc(self):
+        import zlib
+        from mdospatch import ROMS16
+        self.assertIn(zlib.crc32(GAMA.read_bytes()), ROMS16)
+
+    def test_cat_and_save(self):
+        from image import MdosImage
+        from nextmmu import DidaktikNext
+        m = DidaktikNext(MDOS.read_bytes(), GAMA.read_bytes(), IMAGE)
+        m.run_frames(220)                                   # the Gama ROM boots slower
+        self.assertIn("1989 DIDAKTIK SKALICA", m.screen_text()[-1])
+        m.type_keys(CAT)
+        m.run_frames(60)
+        self.assertIn("Directory of D80 Demo", m.screen_text())
+        m.type_keys([["SPACE"]])                            # scroll? -> no
+        m.run_frames(20)
+        m.type_keys(SAVE_TEST)
+        m.run_frames(150)
+        names = [e.raw_name.rstrip(b"\0") for e in MdosImage(bytes(m.image_bytes(0))).entries()]
+        self.assertIn(b"test", names)
+        self.assertEqual(m.cpu.mdos_rom_writes, [])
+        self.assertFalse(m.mdos_paged)
 
 
 class TestBlank(unittest.TestCase):
@@ -207,6 +240,29 @@ class TestBlank(unittest.TestCase):
             self.assertEqual(got, zlib.crc32(data), data[:4])
             if len(data) > 100:
                 self.assertLess(steps / len(data), 25)      # instructions per byte
+
+    @unittest.skipUnless(D80_BIN.exists() and D80_SYM.exists(), "dot command not built")
+    def test_dot_command_rom48_known(self):
+        """rom48_known accepts exactly the 16K ROMs in mdospatch.ROMS16."""
+        from mdospatch import ROMS16
+        sym = {}
+        for line in D80_SYM.read_text().splitlines():
+            name, _, val = line.partition(": EQU ")
+            if val:
+                sym[name] = int(val, 16)
+        for crc in (*ROMS16, 0x545531FA, 0x98B1320B, 0):
+            mem = bytearray(0x10000)
+            dot = D80_BIN.read_bytes()
+            mem[0x2000:0x2000 + len(dot)] = dot
+            mem[sym["crc"]:sym["crc"] + 4] = (crc ^ 0xFFFFFFFF).to_bytes(4, "little")
+            mem[0] = 0x76
+            cpu = Z80(mem)
+            cpu.sp = 0xFF00
+            cpu.push(0x0000)
+            cpu.pc = sym["rom48_known"]
+            while cpu.pc != 0:
+                cpu.step()
+            self.assertEqual(bool(cpu.f & 0x40), crc in ROMS16, f"{crc:08X}")
 
     @unittest.skipUnless(D80_BIN.exists() and D80_SYM.exists(), "dot command not built")
     def test_dot_command_progress_bar(self):

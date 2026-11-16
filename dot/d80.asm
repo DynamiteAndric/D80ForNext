@@ -10,7 +10,8 @@
 ;       ("File exists" if it is there already)
 ;
 ; Loads the MDOS 1.0 ROM (default c:/sys/d80/mdos10.rom) and the standard
-; 48K ROM (default c:/machines/next/48.rom), checks both by CRC32, applies the
+; 48K ROM (default c:/machines/next/48.rom) or, with -4, a Didaktik Gama ROM,
+; checks both by CRC32 (rom48_crcs lists the accepted 16K ROMs), applies the
 ; patches from mdospatch.asm and loads the image into allocated 8K pages.
 ; Then it turns the Next into a 48K Spectrum with a Didaktik 80 (see
 ; mdospatch.asm for the DivMMC automap set-up) and cold-starts MDOS.
@@ -49,6 +50,7 @@ WIN_REG     equ #54
 MAX_PAGES   equ 104
 MDOS_CRC    equ #545531FA               ; MDOS 1.0 (1991), 14336 bytes
 ROM48_CRC   equ #DDEE531F               ; Sinclair 48K ROM
+GAMA89_CRC  equ #45C29401               ; Didaktik Gama '89 ROM (1989 DIDAKTIK SKALICA)
 
     ORG #2000
 
@@ -108,7 +110,7 @@ start:
     nextreg #7F,#43
     call fclose
     nextreg #7F,#44
-    ld hl,ROM48_CRC & #FFFF : ld de,ROM48_CRC >> 16 : call crc_check
+    call rom48_known
     ld hl,msg_48 : jp nz,fail
     ld hl,msg_ok : call say
 
@@ -459,6 +461,24 @@ crc_check:
     ld a,(crc+2) : cpl : cp e : ret nz
     ld a,(crc+3) : cpl : cp d
     ret
+
+; The 16K ROM: the Sinclair 48K ROM or a Didaktik ROM that keeps every 48K ROM
+; address MDOS uses (checked with tools/romcompat.py before adding it here)
+; -> Z if the CRC is one of rom48_crcs
+rom48_known:
+    ld ix,rom48_crcs
+.next:
+    ld l,(ix+0) : ld h,(ix+1) : ld e,(ix+2) : ld d,(ix+3)
+    ld a,l : or h : or e : or d : jr z,.no
+    call crc_check : ret z
+    ld bc,4 : add ix,bc : jr .next
+.no:
+    inc a                               ; NZ
+    ret
+
+rom48_crcs:
+    dd ROM48_CRC, GAMA89_CRC
+    dd 0
 
 ; ---- SD write-through (-w) -------------------------------------------------------
 ; image just opened: card extents -> MDOS B page at SD_MAP, card flags -> sd_cs/sd_blk

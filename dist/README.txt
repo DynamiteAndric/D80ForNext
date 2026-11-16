@@ -41,6 +41,15 @@ Blank disks (-n):
   is the file name (up to 10 characters). An existing file is never
   overwritten: .d80 stops with "File exists".
 
+Didaktik ROMs (-4):
+  -4 also takes the BASIC ROM of a Didaktik computer instead of the 48K ROM:
+    .d80 -4 /sys/d80/gama.rom /d80/demo.d80
+  Accepted by CRC32: Sinclair 48K (DDEE531F), Didaktik Gama '89
+  (45C29401). Other ROMs stop with "Not a 48K ROM". Not emulated: the
+  Gama's second 32K bank (OUT 95,1), the 8255 printer port, and the
+  Didaktik ULA timing (the Next uses 48K timing). OUT 31 also drives the
+  Next's DAC A if the DACs are enabled. The ROMs are not included.
+
 Drive B:
   A second image goes into drive B:. In MDOS use the drive letter:
   CAT "b:", LOAD *"b:name", SAVE *"b:name" CODE 16384,6912.

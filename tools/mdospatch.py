@@ -29,6 +29,10 @@ MENU_FONT = 0x0C00                               # 48K ROM font copy in the menu
 # CRC32 of the ROMs the patches were written against
 MDOS10_CRC = 0x545531FA       # Didaktik_40-80_MDOS_v1_91.rom (14336 bytes)
 ROM48_CRC = 0xDDEE531F        # standard Sinclair 48K ROM (16384 bytes)
+# 16K ROMs the dot command accepts in place of the 48K ROM (rom48_crcs in d80.asm);
+# tools/romcompat.py checks that a new one keeps the 48K ROM addresses MDOS uses
+ROMS16 = {ROM48_CRC: "Sinclair 48K",
+          0x45C29401: "Didaktik Gama '89"}
 
 SECTOR = 512
 SECTORS_PER_PAGE = 0x2000 // SECTOR
