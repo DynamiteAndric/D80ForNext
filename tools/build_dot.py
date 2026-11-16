@@ -7,7 +7,8 @@ written to dot/build/patches.json (used by tools/mdospatch.py) and
 dot/build/patches.inc (included by the dot command), so no ROM content is
 ever stored in the repository.
 
-Step 2 (dot command): dot/d80.asm is assembled to dot/build/D80 if present.
+Step 2 (dot command): dot/d80.asm is assembled to dot/build/D80 if present,
+and the result is copied to dist/dot/D80 (the SD card package).
 
     python tools/build_dot.py
 """
@@ -24,6 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DOT = ROOT / "dot"
 BUILD = DOT / "build"
+DIST_DOT = ROOT / "dist" / "dot"
 SJASM = ROOT / "tools" / "sjasmplus" / "sjasmplus-1.24.0.win" / "sjasmplus.exe"
 IMAGES = {"mda": 0x0000, "mdb": 0x2000}  # name -> base address
 DATA_SYMBOLS = ("img_secs", "page_table", "fix_pg2", "fix_pg7",
@@ -114,6 +116,9 @@ def main() -> None:
     if (DOT / "d80.asm").exists():
         sjasm("--sym=build/d80.sym", "--lst=build/d80.lst", "d80.asm")
         print(f"dot command: {BUILD / 'D80'} ({(BUILD / 'D80').stat().st_size} bytes)")
+        DIST_DOT.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(BUILD / "D80", DIST_DOT / "D80")
+        print(f"copied to {DIST_DOT / 'D80'}")
 
 
 if __name__ == "__main__":

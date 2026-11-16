@@ -4,7 +4,9 @@
 Copy the contents of this folder to the root of the Next SD card:
 
   /dot/D80               the dot command
-  /sys/d80/mdos10.rom    MDOS 1.0 ROM (Didaktik_40-80_MDOS_v1_91, CRC32 545531FA)
+  /sys/d80/mdos10.rom    MDOS 1.0 ROM (Didaktik_40-80_MDOS_v1_91.rom, CRC32 545531FA),
+                         not included; download it from
+                         https://cygnus.speccy.cz/download_roms.php
   /d80/demo.d80          a demo disk (RUN starts its menu)
 
 The standard 48K ROM is taken from /machines/next/48.rom, which is part of

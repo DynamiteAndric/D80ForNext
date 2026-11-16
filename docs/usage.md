@@ -12,7 +12,7 @@ Copy the contents of `dist/` to the root of the Next SD card:
 | `/sys/d80/mdos10.rom` | the MDOS 1.0 ROM — **not included**, see below |
 | `/d80/demo.d80` | a demo disk (`RUN` starts its menu) |
 
-The MDOS ROM is copyrighted and not distributed. Use `Didaktik_40-80_MDOS_v1_91.rom` (14,336 bytes, CRC32 `545531FA`) and save it as `/sys/d80/mdos10.rom`.
+The MDOS ROM is copyrighted and not distributed. Download `Didaktik_40-80_MDOS_v1_91.rom` (MDOS 1.0, 1991; 14,336 bytes, CRC32 `545531FA`) from the ROM page of [cygnus.speccy.cz](https://cygnus.speccy.cz/download_roms.php) and save it as `/sys/d80/mdos10.rom`.
 
 The standard 48K ROM is taken from `/machines/next/48.rom`, which is part of the normal Next distribution.
 

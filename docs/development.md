@@ -8,7 +8,7 @@ How `.d80` works, how to build it and how to check it without hardware.
 python tools/build_dot.py
 ```
 
-It needs sjasmplus in `tools/sjasmplus/` (git ignores it) and writes `dot/build/D80`, `menu.bin` and the patch tables. Copy `dot/build/D80` to `/dot/` on the card.
+It needs sjasmplus in `tools/sjasmplus/` (git ignores it) and writes `dot/build/D80`, `menu.bin` and the patch tables, and copies `D80` to `dist/dot/D80`, so `dist/` is ready to copy to the card.
 
 ## How it works
 
@@ -38,7 +38,7 @@ Pure Python 3.10+ with no dependencies. Run the scripts from the project root as
 
 | File | Purpose |
 |---|---|
-| `build_dot.py` | Assembles `dot/*.asm` with sjasmplus into `dot/build/D80`, `menu.bin` and the patch tables |
+| `build_dot.py` | Assembles `dot/*.asm` with sjasmplus into `dot/build/D80`, `menu.bin` and the patch tables, and copies `D80` to `dist/dot/` |
 | `new_image.py` | Creates a blank formatted image on a PC, as `.d80 -n` does |
 | `image.py` | Reader for MDOS disk images (geometry, FAT, directory, files), `blank_image` and `add_file` |
 | `basic.py` | Tokenizes 48K BASIC source text into a program, as `SAVE` stores it |
@@ -80,7 +80,7 @@ ZEsarUX 13.0 (Windows build) lives in `emulators/ZEsarUX/`, which git ignores. I
 
 ### Reference runs with real MDOS (Fuse)
 
-Fuse 1.10.1 in `emulators/fuse/` emulates the Didaktik 80 interface. The MDOS ROMs (from cygnus.speccy.cz) are kept in `emulators/roms/`, which git ignores; they are copyrighted and not distributed. Fuse expects the 14 KB MDOS 1.0 ROM as `emulators/fuse/roms/didaktik80.rom`.
+Fuse 1.10.1 in `emulators/fuse/` emulates the Didaktik 80 interface. The MDOS ROMs (from [cygnus.speccy.cz](https://cygnus.speccy.cz/download_roms.php)) are kept in `emulators/roms/`, which git ignores; they are copyrighted and not distributed. Fuse expects the 14 KB MDOS 1.0 ROM as `emulators/fuse/roms/didaktik80.rom`.
 
 `tools/fuse_check.py` boots an image with the original Didaktik 80, types keys into the Fuse window only, and captures that window. Its captures are the reference for `.d80`:
 
