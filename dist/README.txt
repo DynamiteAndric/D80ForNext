@@ -5,7 +5,7 @@ Copy the contents of this folder to the root of the Next SD card:
 
   /dot/D80               the dot command
   /sys/d80/mdos10.rom    MDOS 1.0 ROM (Didaktik_40-80_MDOS_v1_91, CRC32 545531FA)
-  /d80/*.d80             disk images
+  /d80/demo.d80          a demo disk (RUN starts its menu)
 
 The standard 48K ROM is taken from /machines/next/48.rom, which is part of
 the normal Next SD card distribution.
@@ -14,10 +14,10 @@ Usage (NextBASIC or the command line):
 
   .d80 [-w] [-r mdos.rom] [-4 48.rom] [-n] a.d80 [[-n] b.d80]
 
-  .d80 /d80/021.d80
-  .d80 -w /d80/021.d80                   disk writes go back to the image file
-  .d80 -w /d80/021.d80 /d80/data.d80     a second image in drive B:
-  .d80 -w /d80/021.d80 -n /d80/data.d80  ... created as a blank disk first
+  .d80 /d80/demo.d80
+  .d80 -w /d80/demo.d80                  disk writes go back to the image file
+  .d80 -w /d80/demo.d80 /d80/data.d80    a second image in drive B:
+  .d80 -w /d80/demo.d80 -n /d80/data.d80 ... created as a blank disk first
   .d80 -w -n /d80/small.d40              a blank 360K D40 disk (*.d40)
   .d80 -r /path/mdos.rom -4 /path/48.rom /path/game.d80
   .d80 "c:/my disks/game.d80"            (quotes allow spaces and ':')

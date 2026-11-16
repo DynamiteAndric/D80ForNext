@@ -2,7 +2,7 @@
 
 Typical use: boot an original D40/D80 image with real MDOS for reference:
 
-    python tools/fuse_check.py --disk images/021.d80 --seconds 20 out/_fuse
+    python tools/fuse_check.py --disk dist/d80/demo.d80 --seconds 20 out/_fuse
     python tools/fuse_check.py --snapshot out/029-GAMES/TURRICAN1+.z80 out/_fuse
 
 The window is captured with the Win32 PrintWindow API (only the emulator

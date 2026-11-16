@@ -227,3 +227,46 @@ def blank_image(name: str = "NoNameDisk", disk_id: bytes = b"\x00\x00",
         set_fat(data, n, FAT_FREE)
     return bytes(data)
 
+
+# ---- writing files -------------------------------------------------------------
+
+def add_file(data: bytearray, type_char: str, name: str, body: bytes,
+             param1: int = 0, param2: int = 0x8000, attributes: int = 0x0F) -> None:
+    """Add a file to an image in place, laid out as MDOS SAVE * writes it.
+
+    ``param1`` is the start address (``B``) or autostart line (``P``);
+    ``param2`` is the program length without variables (``P``) and #8000
+    for the other types."""
+    if not body:
+        raise MdosError("empty files are not supported")
+    im = MdosImage(bytes(data))
+    raw_name = name.encode("latin-1")
+    if not 0 < len(raw_name) <= 10:
+        raise MdosError(f"bad file name {name!r}")
+    used = {e.index for e in im.entries()}
+    if any(e.raw_name.rstrip(b"\x00") == raw_name and e.type == type_char for e in im.entries()):
+        raise MdosError(f"file exists: {name}")
+    slot = next((i for i in range(DIR_ENTRIES) if i not in used), None)
+    if slot is None:
+        raise MdosError("directory full")
+    n = -(-len(body) // SECTOR_SIZE)
+    free = [s for s in range(DATA_FIRST_SECTOR, im.total_sectors) if im.fat(s) == FAT_FREE][:n]
+    if len(free) < n:
+        raise MdosError("disk full")
+    for i, s in enumerate(free):
+        chunk = body[i * SECTOR_SIZE:(i + 1) * SECTOR_SIZE]
+        data[s * SECTOR_SIZE:(s + 1) * SECTOR_SIZE] = chunk + b"\x00" * (SECTOR_SIZE - len(chunk))
+        set_fat(data, s, free[i + 1] if i + 1 < n else FAT_EOF_BASE + len(body) % SECTOR_SIZE)
+    e = bytearray(b"\xE5" * DIR_ENTRY_SIZE)
+    e[0] = ord(type_char)
+    e[1:11] = raw_name + b"\x00" * (10 - len(raw_name))
+    e[11:13] = (len(body) & 0xFFFF).to_bytes(2, "little")
+    e[13:15] = param1.to_bytes(2, "little")
+    e[15:17] = param2.to_bytes(2, "little")
+    e[17:19] = free[0].to_bytes(2, "little")
+    e[19] = 0
+    e[20] = attributes
+    e[21] = len(body) >> 16
+    base = DIR_FIRST_SECTOR * SECTOR_SIZE + slot * DIR_ENTRY_SIZE
+    data[base:base + DIR_ENTRY_SIZE] = e
+

@@ -8,8 +8,8 @@
 4. saves the disk image (Media/Disk/Didaktik 80/Drive A/Save),
 5. converts the new SNAPSHOTnn file with snapshot.py and lists the result.
 
-Example (HEXAGONIA from disk 021):
-    python tools/fuse_snap_roundtrip.py images/021.d80 "R,ENTER,WAIT4,D,WAIT15" out/_snapfuse
+Example (the IM 2 demo from the demo disk):
+    python tools/fuse_snap_roundtrip.py dist/d80/demo.d80 "R,ENTER,WAIT3,A,WAIT15" out/_snapfuse
 """
 import argparse
 import shutil

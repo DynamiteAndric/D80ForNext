@@ -1,8 +1,10 @@
 """Tests for the .d80 dot command: patch table, FAT16 helper and the Next runtime model.
 
 The model tests need the MDOS 1.0 ROM (emulators/roms/), a standard 48K ROM
-(emulators/fuse/roms/48.rom), the sample image 021.d80 and the generated
-patch data (python tools/build_dot.py); they are skipped otherwise.
+(emulators/fuse/roms/48.rom) and the generated patch data (python
+tools/build_dot.py); they are skipped otherwise. They run on the demo disk
+from tools/demo_image.py, which is built in memory. A few regression tests
+use third-party disks from emulators/images/ (not in git) when present.
 """
 
 import shutil
@@ -11,15 +13,17 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from demo_image import DEMO_I, build as build_demo
 from mdospatch import PATCHES, PageMap, PatchError, build_pages, check_rom
 from z80mini import Z80
 
 ROOT = Path(__file__).resolve().parents[1]
 MDOS = ROOT / "emulators" / "roms" / "Didaktik_40-80_MDOS_v1_91.rom"
 ROM48 = ROOT / "emulators" / "fuse" / "roms" / "48.rom"
-IMAGE = ROOT / "images" / "021.d80"
+IMAGE = build_demo()
+SAMPLES = ROOT / "emulators" / "images"                # optional third-party disks
 SDCARD = ROOT / "emulators" / "ZEsarUX" / "tbblue.mmc"
-have_all = all(p.exists() for p in (MDOS, ROM48, IMAGE, PATCHES))
+have_all = all(p.exists() for p in (MDOS, ROM48, PATCHES))
 
 
 
@@ -33,7 +37,7 @@ class TestR(unittest.TestCase):
         self.assertEqual(cpu.a, 3)                  # NOP + ED + 5F
 
 
-@unittest.skipUnless(have_all, "ROMs, sample image or patches.json not present")
+@unittest.skipUnless(have_all, "ROMs or patches.json not present")
 class TestPatches(unittest.TestCase):
     def setUp(self):
         self.mdos = MDOS.read_bytes()
@@ -47,7 +51,7 @@ class TestPatches(unittest.TestCase):
 
     def test_patched_bytes(self):
         import json
-        b = build_pages(self.mdos, IMAGE.read_bytes(), self.pages)
+        b = build_pages(self.mdos, IMAGE, self.pages)
         page_out = json.loads(PATCHES.read_text())["symbols"]["page_out_j"] - 4
         self.assertEqual(b.mda[0x005D:0x0060], bytes([0xC3]) + page_out.to_bytes(2, "little"))
         self.assertEqual(b.mdb[page_out - 0x2000:page_out - 0x2000 + 7],     # SNAP on, JP #1FF8
@@ -73,17 +77,17 @@ class TestPatches(unittest.TestCase):
                 self.assertLess(len(hx) // 2, 512, f"suspiciously long patch at {off:#x}")
 
 
-@unittest.skipUnless(have_all, "ROMs, sample image or patches.json not present")
+@unittest.skipUnless(have_all, "ROMs or patches.json not present")
 class TestNextModel(unittest.TestCase):
     def test_cat_lists_directory(self):
         from nextmmu import DidaktikNext
-        m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), IMAGE.read_bytes())
+        m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), IMAGE)
         m.run_frames(100)
         self.assertIn("1982 Sinclair Research Ltd", m.screen_text()[-1])
         m.type_keys([["CAPS", "SYM"], ["SYM", "9"], ["ENTER"]])     # CAT
         m.run_frames(60)
         text = m.screen_text()
-        self.assertIn("Directory of NoNameDisk", text)
+        self.assertIn("Directory of D80 Demo", text)
         self.assertTrue(any(t.startswith("P run") and t.endswith("RWED") for t in text))
         self.assertEqual(m.fdc_access, [])
         self.assertEqual(m.cpu.mdos_rom_writes, [])
@@ -117,7 +121,7 @@ class TestBlank(unittest.TestCase):
         self.assertEqual([im.fat(n) for n in (0, 13)], [0xDDD, 0xDDD])
         self.assertTrue(all(im.fat(n) == 0 for n in range(14, 1440)))
         self.assertTrue(all(im.fat(n) == 0xDDD for n in range(1440, 1705)))
-        kompakt = ROOT / "images" / "036-KOMPAKT.d80"
+        kompakt = SAMPLES / "036-KOMPAKT.d80"
         if kompakt.exists():                    # formatted by MDOS, same disk id
             self.assertEqual(b[:512], kompakt.read_bytes()[:512])
 
@@ -265,7 +269,7 @@ class TestBlank(unittest.TestCase):
             self.assertEqual(seen[-1], width, total)                  # full at the end
             self.assertEqual(seen[total // 2 - 1], width * (total // 2) // total)
 
-    @unittest.skipUnless(have_all, "ROMs, sample image or patches.json not present")
+    @unittest.skipUnless(have_all, "ROMs or patches.json not present")
     def test_mdos_uses_blank_image(self):
         from image import MdosImage, blank_image
         t = TestSdWrite()
@@ -292,23 +296,23 @@ def snapshots(m):
     return {e.name.strip(): img.read(e) for e in img.entries() if e.type == "S"}
 
 
-@unittest.skipUnless(have_all, "ROMs, sample image or patches.json not present")
+@unittest.skipUnless(have_all, "ROMs or patches.json not present")
 class TestSnap(unittest.TestCase):
     """The DRIVE button (DivMMC NMI) as the Didaktik SNAP button."""
 
     running = None
 
     @classmethod
-    def hexagonia(cls):
-        """A machine running HEXAGONIA (disk 021 menu, key D), built once."""
+    def demo(cls):
+        """A machine running the IM 2 demo (RUN menu, key A), built once."""
         import copy
         from nextmmu import DidaktikNext
         if cls.running is None:
-            m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), IMAGE.read_bytes())
+            m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), IMAGE)
             m.run_frames(150)
             m.type_keys([["R"], ["ENTER"]])
             m.run_frames(300)
-            m.type_keys([["D"]])
+            m.type_keys([["A"]])
             m.run_frames(500)
             cls.running = m
         return copy.deepcopy(cls.running)
@@ -322,9 +326,9 @@ class TestSnap(unittest.TestCase):
         self.assertFalse(m.hung)
 
     def test_snap_saves_running_program(self):
-        m = self.hexagonia()
+        m = self.demo()
         c = m.cpu
-        self.assertEqual((c.im, c.i), (2, 0x3A))            # the game is running
+        self.assertEqual((c.im, c.i), (2, DEMO_I))            # the game is running
         for _ in range(3000):                               # somewhere inside a frame
             c.step()
         regs = dict(a=c.a, f=c.f, bc=c.bc, de=c.de, hl=c.hl, a_=c.a_, f_=c.f_,
@@ -350,7 +354,7 @@ class TestSnap(unittest.TestCase):
 
         # the game goes on, and SNAP works again
         m.run_frames(50)
-        self.assertEqual((c.im, c.i), (2, 0x3A))
+        self.assertEqual((c.im, c.i), (2, DEMO_I))
         self.assertTrue(m.press_snap())
         m.run_frames(300)
         self.check_clean(m)
@@ -360,7 +364,7 @@ class TestSnap(unittest.TestCase):
         import json
         from nextmmu import DidaktikNext
         sym = json.loads(PATCHES.read_text())["symbols"]
-        m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), IMAGE.read_bytes())
+        m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), IMAGE)
         m.run_frames(100)
 
         # CAT enters MDOS through #0008 and re-enters it through #0000 after
@@ -382,7 +386,7 @@ class TestSnap(unittest.TestCase):
         self.assertEqual(m.snap_results, [True, False, True, False, True, False, False, True])
         text = m.screen_text()
         self.assertEqual(text[-1], "scroll?")
-        self.assertIn("B level 2b       18120 ----RWED", text)  # the listing is intact
+        self.assertIn("B data10         10270 ----RWED", text)  # the listing is intact
         m.type_keys([["N"]])
         m.run_frames(20)
         m.snap_at = [(sym["snap_entry8_j"], True)]
@@ -430,13 +434,13 @@ def regs(c):
             c.ix, c.iy, c.i, c.sp, c.pc, c.iff1)
 
 
-@unittest.skipUnless(have_all, "ROMs, sample image or patches.json not present")
+@unittest.skipUnless(have_all, "ROMs or patches.json not present")
 class TestMenu(unittest.TestCase):
     """DRIVE held (or CAPS SHIFT + DRIVE): the D80 menu."""
 
     def basic(self, image_b=None):
         from nextmmu import DidaktikNext
-        m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), IMAGE.read_bytes(),
+        m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), IMAGE,
                          image_b=image_b)
         m.run_frames(100)
         return m
@@ -462,7 +466,7 @@ class TestMenu(unittest.TestCase):
         self.assertEqual(c.nr06, 0x10)
         self.assertEqual((c.mmu[6], c.mmu[7]), (0, 1))
         self.assertEqual(c.mdos_rom_writes, [])
-        if not game:                                    # HEXAGONIA does OUT 145 itself
+        if not game:                                    # a running program may use the ports
             self.assertEqual(m.fdc_access, [])
 
     def cat(self, m, keys=CAT):
@@ -477,7 +481,7 @@ class TestMenu(unittest.TestCase):
         return text
 
     def test_back_leaves_program_untouched(self):
-        m = TestSnap.hexagonia()
+        m = TestSnap.demo()
         c = m.cpu
         for _ in range(3000):
             c.step()
@@ -490,7 +494,7 @@ class TestMenu(unittest.TestCase):
         self.assertEqual(bytes(m.mem[c.sp:]), before[c.sp - 0x4000:])
         self.clean(m, game=True)
         m.run_frames(50)
-        self.assertEqual((c.im, c.i), (2, 0x3A))         # the game goes on
+        self.assertEqual((c.im, c.i), (2, DEMO_I))         # the game goes on
         self.assertEqual(snapshots(m), {})
 
     def test_short_press_is_still_snap(self):
@@ -513,7 +517,7 @@ class TestMenu(unittest.TestCase):
         self.clean(m, game=True)
 
     def test_snapshot_from_menu(self):
-        m = TestSnap.hexagonia()
+        m = TestSnap.demo()
         c = m.cpu
         for _ in range(3000):
             c.step()
@@ -526,7 +530,7 @@ class TestMenu(unittest.TestCase):
         self.assertEqual(s.pc, pc)
         low = s.sp - 8 - 0x4000
         self.assertEqual(s.ram[:low], ram[:low])         # the screen without the menu
-        self.assertEqual((c.im, c.i), (2, 0x3A))
+        self.assertEqual((c.im, c.i), (2, DEMO_I))
 
     def test_swap(self):
         from image import blank_image
@@ -534,9 +538,9 @@ class TestMenu(unittest.TestCase):
         self.menu(m, ["X", "SPACE"])                     # hot key
         self.clean(m)
         self.assertIn("Directory of DiskB", " ".join(self.cat(m, CAT_A)))
-        self.assertIn("Directory of NoNameDisk", " ".join(self.cat(m, CAT_B)))
+        self.assertIn("Directory of D80 Demo", " ".join(self.cat(m, CAT_B)))
         self.menu(m, ["ENTER", "6", "6", "6", "ENTER"])  # "Swap A: and B:", then "Back"
-        self.assertIn("Directory of NoNameDisk", " ".join(self.cat(m, CAT_A)))
+        self.assertIn("Directory of D80 Demo", " ".join(self.cat(m, CAT_A)))
         self.assertIn("Directory of DiskB", " ".join(self.cat(m, CAT_B)))
         m.type_keys(SAVE_B)                              # B: still writable
         m.run_frames(150)
@@ -554,26 +558,26 @@ class TestMenu(unittest.TestCase):
         m = self.basic()                                 # no image for B:
         self.menu(m, ["X", "SPACE"])
         self.assertNotIn("Directory of", " ".join(self.cat(m, CAT_A)))
-        self.assertIn("Directory of NoNameDisk", " ".join(self.cat(m, CAT_B)))
+        self.assertIn("Directory of D80 Demo", " ".join(self.cat(m, CAT_B)))
         self.clean(m)
 
     def test_reset(self):
-        m = TestSnap.hexagonia()
+        m = TestSnap.demo()
         self.menu(m, ["R"])
         m.run_frames(150)
         self.assertIn("1982 Sinclair Research Ltd", m.screen_text()[-1])
         self.clean(m, game=True)
-        self.assertIn("Directory of NoNameDisk", " ".join(self.cat(m, CAT_A)))
+        self.assertIn("Directory of D80 Demo", " ".join(self.cat(m, CAT_A)))
 
 
-@unittest.skipUnless(have_all, "ROMs, sample image or patches.json not present")
+@unittest.skipUnless(have_all, "ROMs or patches.json not present")
 class TestDriveB(unittest.TestCase):
     """A second image in drive B: (.d80 a.d80 b.d80)."""
 
     def test_cat_save_load_on_b_with_sd(self):
         from image import MdosImage, blank_image
         t = TestSdWrite()
-        a = IMAGE.read_bytes()
+        a = IMAGE
         m = t.machine(image_b=blank_image("DiskB"))
         m.type_keys(CAT_B)
         m.run_frames(60)
@@ -593,7 +597,7 @@ class TestDriveB(unittest.TestCase):
         self.assertEqual(lines(m)[-1], "0 OK, 0:1")
         m.type_keys(CAT)                                   # A: is still the default
         m.run_frames(60)
-        self.assertIn("Directory of NoNameDisk", m.screen_text())
+        self.assertIn("Directory of D80 Demo", m.screen_text())
 
     def test_blank_d40_in_b(self):
         from image import MdosImage, blank_image
@@ -614,7 +618,7 @@ class TestDriveB(unittest.TestCase):
 
     def test_no_image_in_b(self):
         from nextmmu import DidaktikNext
-        m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), IMAGE.read_bytes())
+        m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), IMAGE)
         m.run_frames(100)
         m.type_keys(CAT_B)
         m.run_frames(60)
@@ -624,15 +628,15 @@ class TestDriveB(unittest.TestCase):
         self.assertEqual(m.fdc_access, [])
         m.type_keys(CAT)                                   # A: still works
         m.run_frames(60)
-        self.assertIn("Directory of NoNameDisk", m.screen_text())
+        self.assertIn("Directory of D80 Demo", m.screen_text())
 
-    @unittest.skipUnless((ROOT / "images" / "035-X-MAGAZIN.d80").exists(), "035-X-MAGAZIN.d80 missing")
+    @unittest.skipUnless((SAMPLES / "035-X-MAGAZIN.d80").exists(), "035-X-MAGAZIN.d80 missing")
     def test_sector_ops_follow_active_drive(self):
         """X-MAGAZIN reaches the sector loop with IX = #3E0C (drive 1's descriptor)
         while A: is active. MDOS's own ops select the drive from #3E6B, so must ours:
         selecting by IX gave "Device unavailable" (B: is empty)."""
         from nextmmu import DidaktikNext
-        img = (ROOT / "images" / "035-X-MAGAZIN.d80").read_bytes()
+        img = (SAMPLES / "035-X-MAGAZIN.d80").read_bytes()
         m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), img)
         m.run_frames(150)
         m.type_keys([["R"], ["ENTER"]])
@@ -641,7 +645,7 @@ class TestDriveB(unittest.TestCase):
         self.assertEqual(m.fdc_access, [])
 
 
-@unittest.skipUnless(have_all, "ROMs, sample image or patches.json not present")
+@unittest.skipUnless(have_all, "ROMs or patches.json not present")
 class TestSdWrite(unittest.TestCase):
     """-w: every sector MDOS writes goes through to the model SD card."""
 
@@ -652,7 +656,7 @@ class TestSdWrite(unittest.TestCase):
                 image_b=None, busy=0):
         from mdospatch import SdMap
         from nextmmu import DidaktikNext, SpiSdCard
-        image = image or IMAGE.read_bytes()
+        image = image or IMAGE
         card = bytearray(b"\xAA" * 8192 * 512)
         unit = 1 if block else 512
         maps = []
@@ -691,7 +695,7 @@ class TestSdWrite(unittest.TestCase):
     def test_save_block_addressed(self):
         m = self.machine()
         self.assertEqual(self.save(m)[-1], "0 OK, 0:1")
-        self.assertNotEqual(m.image_bytes(), IMAGE.read_bytes())
+        self.assertNotEqual(m.image_bytes(), IMAGE)
         self.assertGreater(len(self.card.writes), 10)          # FAT, directory, data
         self.check_card(m)
 
