@@ -1,5 +1,9 @@
 # D40onNext — Didaktik D40/D80 images on the ZX Spectrum Next
 
+The main way to run Didaktik D40/D80 disks on the Next is the **`.d80` dot command** (see [below](#running-images-directly-on-the-next-d80)). It boots the image with the real MDOS 1.0.
+
+**The PC converter is no longer developed.** It stays as a fallback (a Next without enough free RAM for `.d80`, 128K programs, emulators without Didaktik support, extracting files on a PC) and is kept working, but it gets no new features.
+
 `d80tool` reads Didaktik D40/D80 (MDOS) disk images (`.d40`/`.d80`) and converts their content into formats that the ZX Spectrum Next (NextZXOS) and ordinary emulators load natively:
 
 | MDOS file | Output |
@@ -131,8 +135,9 @@ ZEsarUX 13.0 (Windows build) lives in `emulators/ZEsarUX/` and is ignored by git
 ```sh
 python tools/zesarux_check.py --seconds 6  out/_zesarux out/029-GAMES/TURRICAN1+.z80
 python tools/zesarux_check.py --seconds 25 out/_zesarux out/021/HEXAGONIA.tap
-python tools/zesarux_check.py --machine TBBlue ...   # Next machine (needs a Next SD image; not set up yet)
 ```
+
+For the Next machine (TBBlue with a NextZXOS SD image), use `tools/zesarux_next_check.py`; see the `.d80` section above.
 
 Results so far:
 

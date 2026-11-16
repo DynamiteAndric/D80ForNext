@@ -28,7 +28,7 @@ So SNAP is enabled only while MDOS is paged out. That is the Didaktik behaviour,
 A user program that happens to run 48K ROM code at one of these addresses at the moment of the press simply gets no snapshot, and the user can press again.
 
 ## Status
-- [done] Patches (`dot/mdospatch.asm`), loader and stub (`dot/d80.asm`), model and tests: 23 tests pass.
+- [done] Patches (`dot/mdospatch.asm`), loader and stub (`dot/d80.asm`), model and tests (`TestSnap`; the whole suite passes).
 - [done] Bug found on the way, in `-w` mode: `sd_put` ran on the caller's stack. The snapshot's first sector (`#3F80`–`#417F`) contains MDOS's stack, so the card got different bytes from the RAM copy. The SD write now runs on a private stack at `#2880`–`#28FF`, switched before the `CALL`.
 - [done 2026-11-15] **Real Next hardware:** the user confirmed that SNAP works on a real Next, including:
   - with `-w`, the snapshot loads back after a reset;

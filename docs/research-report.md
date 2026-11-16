@@ -119,7 +119,9 @@ Sources: SpectrumNext FPGA `cores/zxnext/nextreg.txt`; Klive IDE book, appendice
 - **Resolved: multi-load software.** It is common on the sample disks: game loaders that call machine code using MDOS, and disk menus. Option 3 (below) runs it.
 - **Option 3 implemented (2026-11-15):** the `.d80` dot command runs the real MDOS 1.0 using DivMMC automap (NextReg `#B8`–`#BB`), with the unmodified 48K ROM in the alternate ROM and the disk image in RAM pages. See [plan-d80-dot-command.md](plan-d80-dot-command.md). It works on a real Next (confirmed 2026-11-15). Since then it also has:
   - SD write-through (`-w`, [plan-d80-sd-write.md](plan-d80-sd-write.md));
-  - the SNAP button on the Next's DRIVE button ([plan-d80-snap.md](plan-d80-snap.md)).
+  - the SNAP button on the Next's DRIVE button ([plan-d80-snap.md](plan-d80-snap.md));
+  - blank images (`-n`), drive B: and the D80 menu on a held DRIVE button ([plan-d80-drives-menu.md](plan-d80-drives-menu.md)).
+- **Option 1 (PC converter) frozen (2026-11-16):** with `.d80` working, the converter gets no further development. It stays as a fallback; see [plan-python-converter.md](plan-python-converter.md).
 - **Open:** loading only the used sectors on 1 MB machines. 128K mode and MDOS 2.0 (D80 v2) are not planned. See [plan-d80-dot-command.md](plan-d80-dot-command.md).
 
 ## Sources
