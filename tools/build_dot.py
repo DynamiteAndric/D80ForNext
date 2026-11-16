@@ -3,7 +3,7 @@
 Step 1 (patches): dot/mdospatch.asm is assembled twice, once with every
 image pre-filled with 0x00 and once with 0xFF. Bytes that are equal in both
 builds are patch bytes; everything else is untouched ROM. The result is
-written to dot/build/patches.json (used by d80tool.mdospatch) and
+written to dot/build/patches.json (used by tools/mdospatch.py) and
 dot/build/patches.inc (included by the dot command), so no ROM content is
 ever stored in the repository.
 

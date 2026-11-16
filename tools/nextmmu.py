@@ -29,9 +29,9 @@ It also checks the invariants the design relies on:
 
 from __future__ import annotations
 
-from .emu48 import INSTR_PER_FRAME, Spectrum48
-from .mdospatch import PageMap, SdMap, build_pages
-from .z80mini import Z80
+from emu48 import INSTR_PER_FRAME, Spectrum48
+from mdospatch import PageMap, SdMap, build_pages
+from z80mini import Z80
 
 FDC_PORTS = {0x81, 0x83, 0x85, 0x87, 0x89, 0x91, 0x99}
 RETN = {0x45, 0x55, 0x65, 0x75, 0x5D, 0x6D, 0x7D}

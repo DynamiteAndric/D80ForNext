@@ -564,7 +564,7 @@ sd_locate:
     ret
 
 ; ---- -n: create a blank (formatted) 720K D80 image ------------------------------
-; Same layout as d80tool.image.blank_image (what MDOS 1.0 FORMAT writes).
+; Same layout as blank_image in tools/image.py (what MDOS 1.0 FORMAT writes).
 ; Fails with "File exists" rather than overwrite anything.
 BLANK_SECS  equ 1440                    ; D80: 80 tracks x 2 sides x 9 sectors
 BLANK_D40   equ 720                     ; D40 (*.d40): 40 tracks

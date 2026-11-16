@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from d80tool.image import blank_image  # noqa: E402
+from image import blank_image  # noqa: E402
 
 
 def main(argv=None) -> int:

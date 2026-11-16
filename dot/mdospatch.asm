@@ -21,7 +21,7 @@
 ; The floppy driver is replaced by a copy from RAM pages that hold the disk
 ; image.  Values only known at run time are data bytes at fixed addresses
 ; (img_secs, page_table, fix_pg2, fix_pg7) filled in by the loader (dot
-; command or d80tool.mdospatch).   Build:  python tools/build_dot.py
+; command or tools/mdospatch.py).   Build:  python tools/build_dot.py
 ; ---------------------------------------------------------------------------
 
     DEVICE ZXSPECTRUMNEXT

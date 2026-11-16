@@ -1,4 +1,4 @@
-"""Run converted .z80/.sna/.tap files in headless ZEsarUX and save screenshots.
+"""Run .z80/.sna/.tap files in headless ZEsarUX and save screenshots.
 
 Usage:
     python tools/zesarux_check.py [--machine 48k] [--seconds 15] OUTDIR FILE...
@@ -81,7 +81,7 @@ def scr_to_png(scr: Path, png: Path) -> None:
     """Render a 6912-byte .scr (Spectrum screen memory) using the emu48 renderer."""
     import sys
     sys.path.insert(0, str(ROOT / "tools"))
-    from d80tool.emu48 import Spectrum48
+    from emu48 import Spectrum48
     z = Spectrum48(bytes(16384))
     z.mem[0x4000:0x4000 + 6912] = scr.read_bytes()[:6912]
     z.screen_png(png)

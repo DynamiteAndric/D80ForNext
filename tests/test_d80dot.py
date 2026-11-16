@@ -11,8 +11,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from d80tool.mdospatch import PATCHES, PageMap, PatchError, build_pages, check_rom
-from d80tool.z80mini import Z80
+from mdospatch import PATCHES, PageMap, PatchError, build_pages, check_rom
+from z80mini import Z80
 
 ROOT = Path(__file__).resolve().parents[1]
 MDOS = ROOT / "emulators" / "roms" / "Didaktik_40-80_MDOS_v1_91.rom"
@@ -76,7 +76,7 @@ class TestPatches(unittest.TestCase):
 @unittest.skipUnless(have_all, "ROMs, sample image or patches.json not present")
 class TestNextModel(unittest.TestCase):
     def test_cat_lists_directory(self):
-        from d80tool.nextmmu import DidaktikNext
+        from nextmmu import DidaktikNext
         m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), IMAGE.read_bytes())
         m.run_frames(100)
         self.assertIn("1982 Sinclair Research Ltd", m.screen_text()[-1])
@@ -107,7 +107,7 @@ class TestBlank(unittest.TestCase):
     """-n / tools/new_image.py: a blank image as MDOS 1.0 FORMAT writes it."""
 
     def test_layout(self):
-        from d80tool.image import MdosImage, blank_image
+        from image import MdosImage, blank_image
         b = blank_image("NoNameDisk", bytes([0x25, 0x25]))
         im = MdosImage(b)
         self.assertEqual(len(b), 737280)
@@ -122,7 +122,7 @@ class TestBlank(unittest.TestCase):
             self.assertEqual(b[:512], kompakt.read_bytes()[:512])
 
     def test_layout_d40(self):
-        from d80tool.image import MdosImage, blank_image
+        from image import MdosImage, blank_image
         b = blank_image("Small", tracks=40)
         im = MdosImage(b)
         self.assertEqual(len(b), 368640)                    # 360K
@@ -135,7 +135,7 @@ class TestBlank(unittest.TestCase):
     def test_dot_command_writes_the_same(self):
         """blank_sector in the dot command, run in the Z80 model, gives the
         same sectors as blank_image (apart from the random disk id)."""
-        from d80tool.image import blank_image
+        from image import blank_image
         sym = {}
         for line in D80_SYM.read_text().splitlines():
             name, _, val = line.partition(": EQU ")
@@ -267,7 +267,7 @@ class TestBlank(unittest.TestCase):
 
     @unittest.skipUnless(have_all, "ROMs, sample image or patches.json not present")
     def test_mdos_uses_blank_image(self):
-        from d80tool.image import MdosImage, blank_image
+        from image import MdosImage, blank_image
         t = TestSdWrite()
         m = t.machine(image=blank_image("Empty"))       # with -w
         m.type_keys(CAT)
@@ -287,7 +287,7 @@ class TestBlank(unittest.TestCase):
 
 
 def snapshots(m):
-    from d80tool.image import MdosImage
+    from image import MdosImage
     img = MdosImage(m.image_bytes())
     return {e.name.strip(): img.read(e) for e in img.entries() if e.type == "S"}
 
@@ -302,7 +302,7 @@ class TestSnap(unittest.TestCase):
     def hexagonia(cls):
         """A machine running HEXAGONIA (disk 021 menu, key D), built once."""
         import copy
-        from d80tool.nextmmu import DidaktikNext
+        from nextmmu import DidaktikNext
         if cls.running is None:
             m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), IMAGE.read_bytes())
             m.run_frames(150)
@@ -339,7 +339,7 @@ class TestSnap(unittest.TestCase):
         self.assertEqual(list(snaps), ["SNAPSHOT00"])
         self.assertEqual(len(snaps["SNAPSHOT00"]), 49280)
 
-        from d80tool.snapshot import parse
+        from snapshot import parse
         s = parse(snaps["SNAPSHOT00"])
         for k, v in regs.items():
             self.assertEqual(getattr(s, k), v, k)
@@ -358,7 +358,7 @@ class TestSnap(unittest.TestCase):
 
     def test_snap_ignored_while_mdos_runs(self):
         import json
-        from d80tool.nextmmu import DidaktikNext
+        from nextmmu import DidaktikNext
         sym = json.loads(PATCHES.read_text())["symbols"]
         m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), IMAGE.read_bytes())
         m.run_frames(100)
@@ -435,7 +435,7 @@ class TestMenu(unittest.TestCase):
     """DRIVE held (or CAPS SHIFT + DRIVE): the D80 menu."""
 
     def basic(self, image_b=None):
-        from d80tool.nextmmu import DidaktikNext
+        from nextmmu import DidaktikNext
         m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), IMAGE.read_bytes(),
                          image_b=image_b)
         m.run_frames(100)
@@ -521,7 +521,7 @@ class TestMenu(unittest.TestCase):
         self.menu(m, ["S"])
         m.run_frames(300)
         self.clean(m, game=True)
-        from d80tool.snapshot import parse
+        from snapshot import parse
         s = parse(snapshots(m)["SNAPSHOT00"])
         self.assertEqual(s.pc, pc)
         low = s.sp - 8 - 0x4000
@@ -529,7 +529,7 @@ class TestMenu(unittest.TestCase):
         self.assertEqual((c.im, c.i), (2, 0x3A))
 
     def test_swap(self):
-        from d80tool.image import blank_image
+        from image import blank_image
         m = self.basic(image_b=blank_image("DiskB"))
         self.menu(m, ["X", "SPACE"])                     # hot key
         self.clean(m)
@@ -571,7 +571,7 @@ class TestDriveB(unittest.TestCase):
     """A second image in drive B: (.d80 a.d80 b.d80)."""
 
     def test_cat_save_load_on_b_with_sd(self):
-        from d80tool.image import MdosImage, blank_image
+        from image import MdosImage, blank_image
         t = TestSdWrite()
         a = IMAGE.read_bytes()
         m = t.machine(image_b=blank_image("DiskB"))
@@ -596,7 +596,7 @@ class TestDriveB(unittest.TestCase):
         self.assertIn("Directory of NoNameDisk", m.screen_text())
 
     def test_blank_d40_in_b(self):
-        from d80tool.image import MdosImage, blank_image
+        from image import MdosImage, blank_image
         t = TestSdWrite()
         m = t.machine(image_b=blank_image("Small", tracks=40))
         m.type_keys(CAT_B)
@@ -613,7 +613,7 @@ class TestDriveB(unittest.TestCase):
         t.check_card(m)
 
     def test_no_image_in_b(self):
-        from d80tool.nextmmu import DidaktikNext
+        from nextmmu import DidaktikNext
         m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), IMAGE.read_bytes())
         m.run_frames(100)
         m.type_keys(CAT_B)
@@ -631,7 +631,7 @@ class TestDriveB(unittest.TestCase):
         """X-MAGAZIN reaches the sector loop with IX = #3E0C (drive 1's descriptor)
         while A: is active. MDOS's own ops select the drive from #3E6B, so must ours:
         selecting by IX gave "Device unavailable" (B: is empty)."""
-        from d80tool.nextmmu import DidaktikNext
+        from nextmmu import DidaktikNext
         img = (ROOT / "images" / "035-X-MAGAZIN.d80").read_bytes()
         m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), img)
         m.run_frames(150)
@@ -650,8 +650,8 @@ class TestSdWrite(unittest.TestCase):
 
     def machine(self, block=True, pipelined=False, write_protect=False, image=None,
                 image_b=None, busy=0):
-        from d80tool.mdospatch import SdMap
-        from d80tool.nextmmu import DidaktikNext, SpiSdCard
+        from mdospatch import SdMap
+        from nextmmu import DidaktikNext, SpiSdCard
         image = image or IMAGE.read_bytes()
         card = bytearray(b"\xAA" * 8192 * 512)
         unit = 1 if block else 512
@@ -721,7 +721,7 @@ class TestSdWrite(unittest.TestCase):
         self.format_and_save(self.machine(pipelined=True, busy=300))
 
     def format_and_save(self, m):
-        from d80tool.image import MdosImage
+        from image import MdosImage
         m.type_keys(FORMAT_TESTIK)
         m.run_frames(100)
         m.type_keys([["P"]])                                # Proceed

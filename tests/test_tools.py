@@ -1,9 +1,9 @@
 import unittest
 from pathlib import Path
 
-from d80tool import snapshot
-from d80tool.image import MdosImage, MdosError
-from d80tool.z80mini import Z80
+import snapshot
+from image import MdosImage, MdosError
+from z80mini import Z80
 
 ROOT = Path(__file__).resolve().parents[1]
 IMAGES = ROOT / "images"

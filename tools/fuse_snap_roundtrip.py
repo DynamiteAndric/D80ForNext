@@ -6,7 +6,7 @@
 2. boots it in Fuse (Didaktik 80 + MDOS 1.0) and types KEYS (see fuse_check.post_keys),
 3. captures the screen, presses Machine/Didaktik SNAP, waits for MDOS to save,
 4. saves the disk image (Media/Disk/Didaktik 80/Drive A/Save),
-5. converts the new SNAPSHOTnn file with d80tool and lists the result.
+5. converts the new SNAPSHOTnn file with snapshot.py and lists the result.
 
 Example (HEXAGONIA from disk 021):
     python tools/fuse_snap_roundtrip.py images/021.d80 "R,ENTER,WAIT4,D,WAIT15" out/_snapfuse
@@ -20,8 +20,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fuse_check as fc  # noqa: E402
-from d80tool.image import MdosImage  # noqa: E402
-from d80tool import snapshot  # noqa: E402
+from image import MdosImage  # noqa: E402
+import snapshot  # noqa: E402
 
 ap = argparse.ArgumentParser()
 ap.add_argument("image")

@@ -6,7 +6,7 @@ Keys are typed after boot (150 frames). ``A+B`` presses keys together,
 ``WAITn`` waits n seconds (50 frames each), ``SNAP`` presses the DRIVE
 button briefly and ``HOLD`` holds it (the D80 menu). Screens are written every
 ``--every`` frames as OUTDIR/<image>_<tag>_<n>.png. The run reports
-invariant violations of the paging design (see d80tool.nextmmu).
+invariant violations of the paging design (see nextmmu.py).
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from d80tool.nextmmu import DidaktikNext, InvariantError  # noqa: E402
+from nextmmu import DidaktikNext, InvariantError  # noqa: E402
 
 
 def main() -> None:

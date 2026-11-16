@@ -32,10 +32,10 @@ User decisions:
   - If the file exists, the command stops with an error and overwrites nothing.
   - Combines with `-w` (without it a blank image is of little use, but it is allowed).
 - **`dot/d80.asm`:** a new routine `make_blank`: `F_OPEN` creating a new file, then the boot sector, 5 FAT sectors, 8 directory sectors and `#E5` data; then `F_CLOSE` and the normal path (open → `get_map` → load), so `-w` works unchanged. New messages: "File exists", "Write error".
-- **`d80tool`:** `python tools/new_image.py name.d80 [--name X]` with the same logic (`tools/d80tool/image.py`: `blank_image()`), as the reference for the tests.
+- **PC:** `python tools/new_image.py name.d80 [--name X]` with the same logic (`tools/image.py`: `blank_image()`), as the reference for the tests.
 
 **Result**
-- `d80tool.image.blank_image` and `python tools/new_image.py` are done. The boot sector is byte-identical with disk 036, formatted by MDOS (given the same disk ID).
+- `blank_image` (`tools/image.py`) and `python tools/new_image.py` are done. The boot sector is byte-identical with disk 036, formatted by MDOS (given the same disk ID).
 - `.d80 -n`: `make_blank` (`F_OPEN` with `#06` = write + create new only; error 18 prints "File exists"). System sectors are written one at a time, the `#E5` data in 8K blocks from a temporary page; `blank_sector` generates the sector contents.
 - A `*.d40` name creates a 360K D40 disk (40 tracks), see [plan-d80-dot-command.md](plan-d80-dot-command.md).
 - Tests `TestBlank`: layout; the asm `blank_sector` run in the Z80 model gives the same sectors as Python; MDOS in the model does `CAT` and `SAVE` on a blank image with `-w`, the file reads back and the card matches the RAM copy.
@@ -91,7 +91,7 @@ User decisions:
 - [done 2026-11-15] Verified by the user on a real Next (holding DRIVE opens the menu).
 
 ## Model and tests
-- `tools/d80tool/nextmmu.py`: two drives (`PageMap` for A: and B:); NextReg `#10` bit 1 (`drive_held` with a step count) and port `#243B`; the MENU/SCR pages; `press_snap(hold_steps=…)`.
+- `tools/nextmmu.py`: two drives (`PageMap` for A: and B:); NextReg `#10` bit 1 (`drive_held` with a step count) and port `#243B`; the MENU/SCR pages; `press_snap(hold_steps=…)`.
 - `tests/test_d80dot.py`: `TestBlank`, `TestDriveB`, `TestMenu`. The whole suite (43 tests) passes.
 - Menu screens can be previewed with `tools/preview_d80.py` (`--keys` with the `HOLD` action).
 

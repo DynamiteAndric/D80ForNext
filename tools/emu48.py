@@ -1,4 +1,4 @@
-"""Minimal 48K ZX Spectrum harness for checking converted files.
+"""Minimal 48K ZX Spectrum harness (screen rendering, keyboard, frames).
 
 This is not a real emulator: there is no contention, no border, no sound,
 and the frame length is approximate. It is just enough to:
@@ -16,8 +16,8 @@ import struct
 import zlib
 from pathlib import Path
 
-from .snapshot import Snapshot
-from .z80mini import Z80, FLAG_C
+from snapshot import Snapshot
+from z80mini import Z80, FLAG_C
 
 INSTR_PER_FRAME = 8000  # about 69888 T-states at roughly 8.7 T-states per instruction
 LD_BYTES = 0x0556

@@ -1,6 +1,6 @@
 # Plan: Option 1, part 1 — Python converter (status 2026-11-16: removed; kept as history)
 
-> The converter CLI (`list`/`basic`/`extract`/`convert`/`snap`), `d80tool.basic`, `d80tool.tape` and the converter check tools (`batch_check`, `zesarux_batch`, `preview_tap`, `preview_snapshots`) were removed on 2026-11-16. `d80tool.image`, `snapshot`, `emu48`, `z80mini` and `z80dis` stay because `.d80` and its tests use them.
+> The converter CLI (`list`/`basic`/`extract`/`convert`/`snap`), `d80tool.basic`, `d80tool.tape` and the converter check tools (`batch_check`, `zesarux_batch`, `preview_tap`, `preview_snapshots`) were removed on 2026-11-16. `image`, `snapshot`, `emu48`, `z80mini` and `z80dis` stay (now in `tools/`) because `.d80` and its tests use them.
 
 ## Goal
 Use the sample images in `images/` to learn the real MDOS structure. Then write Python that extracts MDOS files and converts them into formats the ZX Spectrum Next loads, and check that the results run.
@@ -48,7 +48,7 @@ The PC converter stays as it is and is kept working, but gets no new features. I
 - for files that open straight from the NextZXOS browser, or in emulators without Didaktik support;
 - for listing and extracting files on a PC.
 
-The rest of the `d80tool` package stays in active use, now as `tools/d80tool/`: `image.py` (`blank_image`), `z80mini`, `nextmmu.py` and `mdospatch.py` are the model and patch builder behind `.d80`, its build (`tools/build_dot.py`) and its tests. The `new` command became `tools/new_image.py`.
+The rest of the `d80tool` package stays in active use, now as plain modules in `tools/`: `image.py` (`blank_image`), `z80mini`, `nextmmu.py` and `mdospatch.py` are the model and patch builder behind `.d80`, its build (`tools/build_dot.py`) and its tests. The `new` command became `tools/new_image.py`.
 
 Dropped (were optional):
 - finishing the ZEsarUX bulk check (the 15 programs from 042/043, the 128K programs on `--machine 128k`);

@@ -2,14 +2,6 @@
 
 The **`.d80` dot command** boots Didaktik D40/D80 (MDOS) disk images (`.d40`/`.d80`) on the ZX Spectrum Next with the real MDOS 1.0.
 
-The earlier PC converter (disk files to `.z80`/`.tap`) has been removed. The Python helpers live in `tools/`: the library `tools/d80tool/` (MDOS image reader, patch builder, the Next model used by the tests), the build script and the emulator checks. To create a blank image on a PC:
-
-```sh
-python tools/new_image.py blank.d80 [--name X]       # blank formatted image (*.d40: 360K D40, else 720K D80)
-```
-
-They are pure Python 3.10+ with no dependencies.
-
 ## Running images directly on the Next: `.d80`
 
 The `.d80` dot command boots a disk image on the Next with the real **MDOS 1.0**. Disk menus, multi-load games and `CAT`/`LOAD *`/`RUN` work as they do on a Didaktik 80.
@@ -96,13 +88,26 @@ python tools/zesarux_next_check.py out/_next --mdos MDOS.rom --image images/021.
 
 ZEsarUX 13 runs the dot command up to `JP 0`, but it does not emulate the programmable DivMMC entry points (NextReg `#B8`–`#BB`). Checked on a real Next: it works, and so does writing with `-w`.
 
-## Emulator helpers
+## Tools (`tools/`)
 
-`tools/d80tool/emu48.py` is a minimal 48K Spectrum harness built on the bundled Python Z80 core; `d80tool.nextmmu` builds the Next model of `.d80` on it (`tools/preview_d80.py`). Both need a standard 48K ROM file, which is not included.
+Python helpers for building, testing and checking `.d80`. Pure Python 3.10+ with no dependencies. Run the scripts from the project root as `python tools/<script>.py`; the modules import each other directly from `tools/`.
 
-### ZEsarUX (headless)
+| File | Purpose |
+|---|---|
+| `build_dot.py` | Assembles `dot/*.asm` with sjasmplus into `dot/build/D80`, `menu.bin` and the patch tables |
+| `new_image.py` | Creates a blank formatted image on a PC, as `.d80 -n` does: `python tools/new_image.py blank.d80 [--name X]` |
+| `image.py` | Reader for MDOS disk images (geometry, FAT, directory, files) and `blank_image` |
+| `mdospatch.py` | Applies the `.d80` patches to a user-supplied MDOS ROM and lays out the RAM pages |
+| `nextmmu.py` | Python model of the `.d80` runtime on the Next (DivMMC automap, NextRegs, SD card), used by the tests |
+| `emu48.py`, `z80mini.py` | Minimal 48K Spectrum harness and the Z80 core it runs on |
+| `snapshot.py` | Parses MDOS `S` snapshots (raw or SNAPSHOT-PACKER) and writes `.z80`/`.sna` |
+| `z80dis.py` | Small Z80 disassembler (used for the MDOS notes) |
+| `fat16.py` | Minimal FAT16 access to an SD card image (`ls`/`put`/`get`) |
+| `preview_d80.py` | Boots an image in the Python model and saves screens as PNG |
+| `zesarux_check.py`, `zesarux_next_check.py` | Headless ZEsarUX runs with screenshots; the second one runs `.d80` on the Next machine (TBBlue) |
+| `fuse_check.py`, `fuse_snap_roundtrip.py` | Reference runs of the original images with real MDOS in Fuse, and a SNAP round trip |
 
-ZEsarUX 13.0 (Windows build) lives in `emulators/ZEsarUX/` and is ignored by git. `tools/zesarux_check.py` starts it with no video and no audio, loads a snapshot or tape, saves the screen via ZRCP `save-screen` and renders it to PNG. `tools/zesarux_next_check.py` builds on it for the Next machine (TBBlue with a NextZXOS SD image); see the `.d80` section above.
+The model and the emulator scripts need a standard 48K ROM and the MDOS ROM, which are not included. ZEsarUX 13.0 (Windows build) lives in `emulators/ZEsarUX/`, which git ignores.
 
 ### Reference runs with real MDOS (Fuse)
 

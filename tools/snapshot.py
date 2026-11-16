@@ -25,7 +25,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from .z80mini import Z80, Trap, Z80Error
+from z80mini import Z80, Trap, Z80Error
 
 SNAP_BASE = 0x3F80
 SNAP_SIZE = 0x10000 - SNAP_BASE  # 49280

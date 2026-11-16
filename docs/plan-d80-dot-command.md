@@ -32,7 +32,7 @@ The patches are generated from `dot/mdospatch.asm`: `tools/build_dot.py` assembl
 
 ## Status
 1. [done] **Driver interface and patch points.** See `docs/mdos10-notes.md`, sections "Driver interface" and "Compatibility findings".
-2. [done] **Python model of the runtime.** `tools/d80tool/nextmmu.py` models DivMMC automap and off-trap timing as in `zxnext.vhd`/`divmmc.vhd`, read-only bank 3, NEXTREG and exact R. `tools/d80tool/mdospatch.py` builds the pages. `tools/preview_d80.py` renders the screens.
+2. [done] **Python model of the runtime.** `tools/nextmmu.py` models DivMMC automap and off-trap timing as in `zxnext.vhd`/`divmmc.vhd`, read-only bank 3, NEXTREG and exact R. `tools/mdospatch.py` builds the pages. `tools/preview_d80.py` renders the screens.
    - **Results:**
      - `CAT` works on disk 021.
      - The disk menus that failed as tapes now run: 020, 022, 024, 025, 026, 027, 031, 033 and 035.
