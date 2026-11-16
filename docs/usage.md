@@ -56,9 +56,11 @@ While loading, `.d80` shows a window in the style of the 128 menu. It reports ea
 | ROM | CRC32 |
 |---|---|
 | Sinclair 48K | `DDEE531F` |
-| Didaktik Gama '89 (`1989 DIDAKTIK SKALICA`) | `45C29401` |
+| Didaktik Gama 80k '89 (`Didaktik_Gama_1989.rom`) | `45C29401` |
+| Didaktik M 1992 (`Didaktik_M_1992.rom`) | `57264D4F` |
+| Didaktik Kompakt 1993 (`Didaktik_Kompakt_93.rom`) | `34752ABA` |
 
-Any other ROM stops with `Not a 48K ROM`. To add one, check it with `python tools/romcompat.py mdos10.rom 48.rom new.rom` and add its CRC to `rom48_crcs` in `dot/d80.asm` (see `docs/plan-didaktik-machines.md`). These ROMs are copyrighted and not included.
+Download the Didaktik ROMs from the same [cygnus.speccy.cz](https://cygnus.speccy.cz/download_roms.php) page as MDOS. Any other ROM stops with `Not a 48K ROM`. To add one, check it with `python tools/romcompat.py mdos10.rom 48.rom new.rom` and add its CRC to `rom48_crcs` in `dot/d80.asm` (see `docs/plan-didaktik-machines.md`). These ROMs are copyrighted and not included.
 
 Differences from the real machines:
 

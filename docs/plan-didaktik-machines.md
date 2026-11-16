@@ -23,15 +23,15 @@
 
 **Status: done.** What was built:
 
-- `rom48_known` and the `rom48_crcs` table in `dot/d80.asm`, with `ROMS16` in `tools/mdospatch.py`. The table holds the Sinclair 48K ROM and Gama '89 (`45C29401`).
+- `rom48_known` and the `rom48_crcs` table in `dot/d80.asm`, with `ROMS16` in `tools/mdospatch.py`. The table holds the Sinclair 48K ROM, Gama 80k '89 (`45C29401`), M 1992 (`57264D4F`) and Kompakt 1993 (`34752ABA`). The Didaktik ROMs come from cygnus.speccy.cz and were checked against the CRC32/MD5 published there. They go in `emulators/roms/`, which git ignores.
 - `tools/romcompat.py`. It checks 58 places: 32 RST #28 targets, 21 syntax-table T_ADDRs, 4 return addresses and the RET at `#1700`.
 - `TestDidaktikRom`: romcompat, boot, CAT and SAVE in the model, plus a test of `rom48_known` in the loader.
 - Docs.
 
 Changes from the plan below:
 
-- The `-m` machine option was dropped. `-4 file` already chooses the ROM, and there is only one known Didaktik CRC so far.
-- The Gama ROM needs about 200 frames to show its copyright message, against about 100 for the 48K ROM.
+- The `-m` machine option was dropped. `-4 file` already chooses the ROM, and the ROM list covers the machines.
+- The Didaktik ROMs need 100–150 frames (M and Kompakt) or about 200 frames (Gama) to show the copyright message.
 - When this ROM writes to ROM space, the writes are ignored, as on real hardware.
 
 
@@ -79,8 +79,8 @@ Changes from the plan below:
 
 ## Verification
 
-- `python tools/build_dot.py`, then `python -m unittest discover -s tests -t .`. Parametrize the existing boot/CAT/SNAP/menu tests over (48K ROM, `DIDAKTIK.ROM`) × (MDOS 1.0, MDOS 2.0). They skip when a ROM is missing.
-- `python tools/romcompat.py emulators/specy/DIDAKTIK.ROM`: no differences at the addresses MDOS uses.
-- `python tools/preview_d80.py MDOS20.rom DIDAKTIK.ROM out/x dist/d80/demo.d80 --keys R,ENTER,WAIT3,A`: the Didaktik copyright screen and the demo menu appear, and `CAT` lists the disk.
+- `python tools/build_dot.py`, then `python -m unittest discover -s tests -t .`. Parametrize the existing boot/CAT/SNAP/menu tests over (48K ROM, the three Didaktik ROMs in `emulators/roms/`) × (MDOS 1.0, MDOS 2.0). They skip when a ROM is missing.
+- `python tools/romcompat.py MDOS.rom 48.rom emulators/roms/Didaktik_*.rom`: no differences at the addresses MDOS uses.
+- `python tools/preview_d80.py MDOS20.rom emulators/roms/Didaktik_Kompakt_93.rom out/x dist/d80/demo.d80 --keys R,ENTER,WAIT3,A`: the Didaktik copyright screen and the demo menu appear, and `CAT` lists the disk.
 - Write test with MDOS 2.0: SAVE a file, then `image_bytes()` and `tools/image.py` read it back.
 - `tools/zesarux_next_check.py` for the loader path; a final check on a real Next.

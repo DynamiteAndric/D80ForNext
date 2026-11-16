@@ -32,7 +32,9 @@ ROM48_CRC = 0xDDEE531F        # standard Sinclair 48K ROM (16384 bytes)
 # 16K ROMs the dot command accepts in place of the 48K ROM (rom48_crcs in d80.asm);
 # tools/romcompat.py checks that a new one keeps the 48K ROM addresses MDOS uses
 ROMS16 = {ROM48_CRC: "Sinclair 48K",
-          0x45C29401: "Didaktik Gama '89"}
+          0x45C29401: "Didaktik Gama 80k '89",
+          0x57264D4F: "Didaktik M 1992",
+          0x34752ABA: "Didaktik Kompakt 1993"}
 
 SECTOR = 512
 SECTORS_PER_PAGE = 0x2000 // SECTOR

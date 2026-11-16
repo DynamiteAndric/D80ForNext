@@ -44,8 +44,10 @@ Blank disks (-n):
 Didaktik ROMs (-4):
   -4 also takes the BASIC ROM of a Didaktik computer instead of the 48K ROM:
     .d80 -4 /sys/d80/gama.rom /d80/demo.d80
-  Accepted by CRC32: Sinclair 48K (DDEE531F), Didaktik Gama '89
-  (45C29401). Other ROMs stop with "Not a 48K ROM". Not emulated: the
+  Accepted by CRC32 (Didaktik ROMs from cygnus.speccy.cz, see above):
+  Sinclair 48K (DDEE531F), Didaktik_Gama_1989.rom (45C29401),
+  Didaktik_M_1992.rom (57264D4F), Didaktik_Kompakt_93.rom (34752ABA).
+  Other ROMs stop with "Not a 48K ROM". Not emulated: the
   Gama's second 32K bank (OUT 95,1), the 8255 printer port, and the
   Didaktik ULA timing (the Next uses 48K timing). OUT 31 also drives the
   Next's DAC A if the DACs are enabled. The ROMs are not included.

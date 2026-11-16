@@ -10,7 +10,7 @@
 ;       ("File exists" if it is there already)
 ;
 ; Loads the MDOS 1.0 ROM (default c:/sys/d80/mdos10.rom) and the standard
-; 48K ROM (default c:/machines/next/48.rom) or, with -4, a Didaktik Gama ROM,
+; 48K ROM (default c:/machines/next/48.rom) or, with -4, a Didaktik Gama/M/Kompakt ROM,
 ; checks both by CRC32 (rom48_crcs lists the accepted 16K ROMs), applies the
 ; patches from mdospatch.asm and loads the image into allocated 8K pages.
 ; Then it turns the Next into a 48K Spectrum with a Didaktik 80 (see
@@ -50,7 +50,9 @@ WIN_REG     equ #54
 MAX_PAGES   equ 104
 MDOS_CRC    equ #545531FA               ; MDOS 1.0 (1991), 14336 bytes
 ROM48_CRC   equ #DDEE531F               ; Sinclair 48K ROM
-GAMA89_CRC  equ #45C29401               ; Didaktik Gama '89 ROM (1989 DIDAKTIK SKALICA)
+GAMA89_CRC  equ #45C29401               ; Didaktik Gama 80k '89 (Didaktik_Gama_1989.rom)
+DIDM92_CRC  equ #57264D4F               ; Didaktik M 1992 (Didaktik_M_1992.rom)
+KOMP93_CRC  equ #34752ABA               ; Didaktik Kompakt 1993 (Didaktik_Kompakt_93.rom)
 
     ORG #2000
 
@@ -477,7 +479,7 @@ rom48_known:
     ret
 
 rom48_crcs:
-    dd ROM48_CRC, GAMA89_CRC
+    dd ROM48_CRC, GAMA89_CRC, DIDM92_CRC, KOMP93_CRC
     dd 0
 
 ; ---- SD write-through (-w) -------------------------------------------------------

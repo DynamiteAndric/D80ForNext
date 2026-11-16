@@ -20,7 +20,11 @@ from z80mini import Z80
 ROOT = Path(__file__).resolve().parents[1]
 MDOS = ROOT / "emulators" / "roms" / "Didaktik_40-80_MDOS_v1_91.rom"
 ROM48 = ROOT / "emulators" / "fuse" / "roms" / "48.rom"
-GAMA = ROOT / "emulators" / "specy" / "DIDAKTIK.ROM"   # Didaktik Gama '89 (optional)
+# Didaktik BASIC ROMs from cygnus.speccy.cz (optional): file, boot frames, copyright line
+DIDAKTIK_ROMS = [(ROOT / "emulators" / "roms" / f, frames, text) for f, frames, text in (
+    ("Didaktik_Gama_1989.rom", 220, "1989 DIDAKTIK SKALICA"),
+    ("Didaktik_M_1992.rom", 150, "1992 DIDAKTIK M BASIC"),
+    ("Didaktik_Kompakt_93.rom", 150, "1993 DIDAKTIK COMPUTER"))]
 IMAGE = build_demo()
 SAMPLES = ROOT / "emulators" / "images"                # optional third-party disks
 SDCARD = ROOT / "emulators" / "ZEsarUX" / "tbblue.mmc"
@@ -108,36 +112,42 @@ D80_BIN = ROOT / "dot" / "build" / "D80"
 D80_SYM = ROOT / "dot" / "build" / "d80.sym"
 
 
-@unittest.skipUnless(have_all and GAMA.exists(), "Didaktik Gama ROM not present")
+@unittest.skipUnless(have_all and all(r.exists() for r, _, _ in DIDAKTIK_ROMS),
+                     "Didaktik ROMs not present")
 class TestDidaktikRom(unittest.TestCase):
-    """A Didaktik ROM in place of the 48K ROM, as with .d80 -4 gama.rom."""
+    """Didaktik Gama/M/Kompakt ROMs in place of the 48K ROM, as with .d80 -4 rom."""
 
     def test_romcompat(self):
         from romcompat import check, ranges
-        self.assertEqual(check(ROM48.read_bytes(), GAMA.read_bytes(), ranges([MDOS.read_bytes()])), [])
+        deps = ranges([MDOS.read_bytes()])
+        for rom, _, _ in DIDAKTIK_ROMS:
+            self.assertEqual(check(ROM48.read_bytes(), rom.read_bytes(), deps), [], rom.name)
 
     def test_known_crc(self):
         import zlib
         from mdospatch import ROMS16
-        self.assertIn(zlib.crc32(GAMA.read_bytes()), ROMS16)
+        for rom, _, _ in DIDAKTIK_ROMS:
+            self.assertIn(zlib.crc32(rom.read_bytes()), ROMS16, rom.name)
 
     def test_cat_and_save(self):
         from image import MdosImage
         from nextmmu import DidaktikNext
-        m = DidaktikNext(MDOS.read_bytes(), GAMA.read_bytes(), IMAGE)
-        m.run_frames(220)                                   # the Gama ROM boots slower
-        self.assertIn("1989 DIDAKTIK SKALICA", m.screen_text()[-1])
-        m.type_keys(CAT)
-        m.run_frames(60)
-        self.assertIn("Directory of D80 Demo", m.screen_text())
-        m.type_keys([["SPACE"]])                            # scroll? -> no
-        m.run_frames(20)
-        m.type_keys(SAVE_TEST)
-        m.run_frames(150)
-        names = [e.raw_name.rstrip(b"\0") for e in MdosImage(bytes(m.image_bytes(0))).entries()]
-        self.assertIn(b"test", names)
-        self.assertEqual(m.cpu.mdos_rom_writes, [])
-        self.assertFalse(m.mdos_paged)
+        for rom, frames, text in DIDAKTIK_ROMS:
+            with self.subTest(rom.name):
+                m = DidaktikNext(MDOS.read_bytes(), rom.read_bytes(), IMAGE)
+                m.run_frames(frames)                        # Didaktik ROMs boot slower
+                self.assertIn(text, m.screen_text()[-1])
+                m.type_keys(CAT)
+                m.run_frames(60)
+                self.assertIn("Directory of D80 Demo", m.screen_text())
+                m.type_keys([["SPACE"]])                    # scroll? -> no
+                m.run_frames(20)
+                m.type_keys(SAVE_TEST)
+                m.run_frames(150)
+                names = [e.raw_name.rstrip(bytes(1)) for e in MdosImage(bytes(m.image_bytes(0))).entries()]
+                self.assertIn(b"test", names)
+                self.assertEqual(m.cpu.mdos_rom_writes, [])
+                self.assertFalse(m.mdos_paged)
 
 
 class TestBlank(unittest.TestCase):
