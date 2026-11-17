@@ -6,3 +6,4 @@ tools/sjasmplus/
 dot/build/*.lst
 dot/build/*.sym
 dist/sys/d80/*.rom
+.idea
