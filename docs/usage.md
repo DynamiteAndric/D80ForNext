@@ -42,22 +42,22 @@ Examples:
 .d80 -w /d80/demo.d80 -n /d80/data.d80  ; ... created blank first
 ```
 
-Without `-4`, `.d80` first asks for the machine (see below). ENTER takes the ZX Spectrum 48K. While loading, `.d80` shows a window in the style of the 128 menu. It reports each step: the ROM checks, then each image with a progress bar, and `New disk …` when `-n` creates one. When everything is ready it shows `Press any key`; the next key starts MDOS.
+Without `-4`, `.d80` first asks for the machine if any Didaktik ROM is on the card (see below). ENTER takes the ZX Spectrum 48K. While loading, `.d80` shows a window in the style of the 128 menu. It reports each step: the ROM checks, then each image with a progress bar, and `New disk …` when `-n` creates one. When everything is ready it shows `Press any key`; the next key starts MDOS.
 
 ## Machine menu: Didaktik Gama, M and Kompakt ROMs
 
-Without `-4`, `.d80` first shows a machine menu:
+Without `-4`, `.d80` first shows a machine menu. It lists only the machines whose ROM file is on the card; the 48K is always there. With no Didaktik ROM on the card there is no menu, and `.d80` starts the 48K.
 
-| Key | Machine | ROM file |
+| Key (all ROMs present) | Machine | ROM file |
 |---|---|---|
 | `1` | ZX Spectrum 48K | `/machines/next/48.rom` |
 | `2` | Didaktik Gama | `/sys/d80/gama.rom` |
 | `3` | Didaktik M | `/sys/d80/didm.rom` |
 | `4` | Didaktik Kompakt | `/sys/d80/kompakt.rom` |
 
-Press a digit, or move the bar with the cursor keys (`6`/`7`) and press ENTER. ENTER alone takes the ZX Spectrum 48K. `-4 file` skips the menu and uses that file. For example, `.d80 -4 /sys/d80/kompakt.rom /d80/demo.d80` starts a Didaktik Kompakt directly.
+Press a digit, or move the bar with the cursor keys (`6`/`7`) and press ENTER. The items are numbered in the order of the table, without gaps: with only `kompakt.rom` on the card the menu shows `1 ZX Spectrum 48K` and `2 Didaktik Kompakt`. ENTER alone takes the ZX Spectrum 48K. `-4 file` skips the menu and uses that file. For example, `.d80 -4 /sys/d80/kompakt.rom /d80/demo.d80` starts a Didaktik Kompakt directly.
 
-With a Didaktik ROM, the Next starts with the Didaktik copyright message, its font and its BASIC changes. MDOS works the same way, because these ROMs keep every 48K ROM address MDOS uses. If the chosen ROM file is missing, `.d80` stops with `File not found`.
+With a Didaktik ROM, the Next starts with the Didaktik copyright message, its font and its BASIC changes. MDOS works the same way, because these ROMs keep every 48K ROM address MDOS uses.
 
 `.d80` checks the ROM by CRC32 and accepts:
 

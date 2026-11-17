@@ -335,6 +335,85 @@ class TestBlank(unittest.TestCase):
             self.assertEqual(seen[-1], width, total)                  # full at the end
             self.assertEqual(seen[total // 2 - 1], width * (total // 2) // total)
 
+    @unittest.skipUnless(D80_BIN.exists() and D80_SYM.exists(), "dot command not built")
+    def test_dot_command_machine_menu(self):
+        """choose_rom lists only the machines whose ROM file opens, skips the
+        menu when only the 48K is there, and numbers the items 1-n."""
+        sym = {}
+        for line in D80_SYM.read_text().splitlines():
+            name, _, val = line.partition(": EQU ")
+            if val:
+                sym[name] = int(val, 16)
+        keymap = {"1": (0xF7, 0), "2": (0xF7, 1), "3": (0xF7, 2), "4": (0xF7, 3),
+                  "ENTER": (0xBF, 0), "6": (0xEF, 4), "7": (0xEF, 3)}
+        HOLD = 3000
+
+        def run(files, keys):
+            """files: ROM names on the card; keys: pressed one after another,
+            each held then released for HOLD steps -> (name_48, printed text)"""
+            mem = bytearray(0x10000)
+            dot = D80_BIN.read_bytes()
+            mem[0x2000:0x2000 + len(dot)] = dot
+            mem[0] = 0x76
+            cpu = Z80(mem)
+
+            def port_in(port):
+                if port & 0xFF != 0xFE:
+                    return 0xFF
+                i, held = divmod(cpu.steps, 2 * HOLD)       # released, then held
+                if i >= len(keys) or held < HOLD:
+                    return 0xFF
+                row, bit = keymap[keys[i]]
+                return 0xFF & ~(1 << bit) if (port >> 8) & row == (port >> 8) else 0xFF
+            cpu.port_in = port_in
+            cpu.sp = 0xFF00
+            cpu.push(0x0000)
+            cpu.pc = sym["choose_rom"]
+            text, opened = [], []
+            while cpu.pc != 0:
+                if cpu.pc == sym["pr_char"]:                    # (uses NEXTREG + RST #10)
+                    text.append("\n" if cpu.a == 13 else chr(cpu.a))
+                    cpu.pc = cpu.pop()
+                    continue
+                if cpu.pc == 0x0008:                            # esxDOS
+                    ret = cpu.pop()
+                    fn = mem[ret]
+                    if fn == 0x9A:                              # F_OPEN, name at HL
+                        name = bytes(mem[cpu.hl:mem.index(0, cpu.hl)]).decode()
+                        opened.append(name)
+                        ok = name.removeprefix("c:/sys/d80/") in files
+                        cpu.a, cpu.f = (5, cpu.f & ~1) if ok else (5, cpu.f | 1)
+                    else:
+                        self.assertEqual(fn, 0x9B)              # F_CLOSE
+                        cpu.f &= ~1
+                    cpu.pc = ret + 1
+                    continue
+                cpu.step()
+                self.assertLess(cpu.steps, 2 * HOLD * (len(keys) + 2), "waits for a key")
+            n48 = bytes(mem[sym["name_48"]:mem.index(0, sym["name_48"])]).decode()
+            return n48, "".join(text), opened
+
+        all3 = {"gama.rom", "didm.rom", "kompakt.rom"}
+        n48, text, opened = run(set(), [])
+        self.assertEqual((n48, text), ("c:/machines/next/48.rom", ""))   # no menu
+        self.assertEqual(opened, ["c:/sys/d80/gama.rom", "c:/sys/d80/didm.rom",
+                                  "c:/sys/d80/kompakt.rom"])
+        n48, text, _ = run(all3, ["ENTER"])
+        self.assertEqual(text, "1 ZX Spectrum 48K\n2 Didaktik Gama\n3 Didaktik M\n"
+                               "4 Didaktik Kompakt\n\n")
+        self.assertEqual(n48, "c:/machines/next/48.rom")
+        self.assertEqual(run(all3, ["2"])[0], "c:/sys/d80/gama.rom")
+        n48, text, _ = run({"kompakt.rom"}, ["ENTER"])
+        self.assertEqual(text, "1 ZX Spectrum 48K\n2 Didaktik Kompakt\n\n")
+        self.assertEqual(n48, "c:/machines/next/48.rom")
+        self.assertEqual(run({"kompakt.rom"}, ["2"])[0], "c:/sys/d80/kompakt.rom")
+        self.assertEqual(run({"kompakt.rom"}, ["3", "4", "2"])[0], "c:/sys/d80/kompakt.rom")
+        self.assertEqual(run({"gama.rom", "kompakt.rom"}, ["3"])[0], "c:/sys/d80/kompakt.rom")
+        self.assertEqual(run({"didm.rom", "kompakt.rom"}, ["6", "ENTER"])[0], "c:/sys/d80/didm.rom")
+        self.assertEqual(run({"didm.rom", "kompakt.rom"}, ["6", "6", "6", "ENTER"])[0],
+                         "c:/sys/d80/kompakt.rom")                  # stops at the last item
+        self.assertEqual(run({"gama.rom"}, ["6", "7", "7", "ENTER"])[0], "c:/machines/next/48.rom")
+
     @unittest.skipUnless(have_all, "ROMs or patches.json not present")
     def test_mdos_uses_blank_image(self):
         from image import MdosImage, blank_image

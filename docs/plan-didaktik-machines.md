@@ -1,4 +1,4 @@
-# Plan: Didaktik Gama, Didaktik M and Didaktik Kompakt on the Next
+# Plan: Didaktik Gama, Didaktik M and Didaktik Kompakt on the Next (status 2026-11-17: done; verified on a real Next)
 
 ## Context
 
@@ -34,6 +34,7 @@ Added afterwards: without `-4` the loader shows a **machine menu**.
 - The items are the first lines of the progress window. The bar stays on the choice, and the progress report continues below it (rows 11–16, enough for the 6 lines of `-n` on both drives).
 - The menu code sits after `once` at the end of the binary. The CRC table and `sd_buf` overlay it once it has run, so the dot command still fits below `#3E00` (6,683 bytes; `once` may grow to `#3A00` before the CRC table has to move).
 - Tested in ZEsarUX with `tools/zesarux_next_check.py --rom`.
+- After the real Next check (2026-11-17), at the user's request: `probe_roms` opens each `c:/sys/d80/*.rom` and the menu lists only the machines found. With none there is no menu. The items are numbered 1–n without gaps (the user's choice). `TestBlank.test_dot_command_machine_menu` runs `choose_rom` in the Z80 model with a fake card and keys. The dot command is 6,971 bytes.
 
 Changes from the plan below:
 
@@ -41,6 +42,7 @@ Changes from the plan below:
 - The Didaktik ROMs need 100–150 frames (M and Kompakt) or about 200 frames (Gama) to show the copyright message.
 - When this ROM writes to ROM space, the writes are ignored, as on real hardware.
 
+The original Phase 1 plan, kept for reference:
 
 - `dot/d80.asm`:
   - Replace the single `ROM48_CRC` check with a table of known CRCs: Sinclair 48K, `45C29401` (Gama '89), and the Gama '87/'88, M '90–'93 and Kompakt dumps once the user supplies them.
@@ -102,21 +104,28 @@ The original Phase 2 plan, kept for reference:
 - **Gama 80K bank 1.** It cannot be trapped. The only other route is to patch the Gama ROM's own bank routines, which only covers BASIC use, so leave it for now.
 - **Exact Didaktik M timing.** Revisit only if a reference (MAME or measurements) shows that software breaks under 48K timing.
 
-## Critical files
+## Files
 
-(Written before Phase 2 was dropped: everything about `mdos20patch.asm`, patch sets and MDOS 2.0 tests below no longer applies.)
-
-- `dot/d80.asm`: ROM CRC tables, the `-m` option, and choosing the patch set
-- `dot/mdospatch.asm` (MDOS 1.0, kept as it is) and the new `dot/mdos20patch.asm`
-- `dot/menu.asm`: MDOS RAM addresses become symbols for each version
-- `tools/build_dot.py`, `tools/mdospatch.py`, `tools/nextmmu.py`, the new `tools/romcompat.py`
-- `tests/test_d80dot.py` and the other tests: run them for each ROM/MDOS combination
-- `docs/usage.md`, `dist/README.txt`, `docs/development.md`, `docs/research-report.md` (which now says "MDOS 2.0 not planned")
+- `dot/d80.asm`: `rom48_crcs` (48K, Gama '89, M '92, Kompakt '93), `rom48_known`, the machine menu (after `once`), `-4` skips it
+- `dot/mdospatch.asm`: the MDOS 2.0 fixes (`fix_*` at `FIXES` = `#2E00`)
+- `tools/romcompat.py`, `tools/mdospatch.py` (`ROMS16`), `tools/nextmmu.py` (any 16K ROM), `tools/image.py` (zero-padded volume names)
+- `tests/test_d80dot.py`: `TestDidaktikRom`, `TestMdos20Fixes`, `TestSnap.test_snap_takes_a_free_name`
+- `docs/usage.md`, `dist/README.txt`, `docs/development.md`
 
 ## Verification
 
-- `python tools/build_dot.py`, then `python -m unittest discover -s tests -t .`. Parametrize the existing boot/CAT/SNAP/menu tests over (48K ROM, the three Didaktik ROMs in `emulators/roms/`) × (MDOS 1.0, MDOS 2.0). They skip when a ROM is missing.
-- `python tools/romcompat.py MDOS.rom 48.rom emulators/roms/Didaktik_*.rom`: no differences at the addresses MDOS uses.
-- `python tools/preview_d80.py MDOS20.rom emulators/roms/Didaktik_Kompakt_93.rom out/x dist/d80/demo.d80 --keys R,ENTER,WAIT3,A`: the Didaktik copyright screen and the demo menu appear, and `CAT` lists the disk.
-- Write test with MDOS 2.0: SAVE a file, then `image_bytes()` and `tools/image.py` read it back.
-- `tools/zesarux_next_check.py` for the loader path; a final check on a real Next.
+- [done] `python tools/build_dot.py`, then `python -m unittest discover -s tests -t .`. The Didaktik tests skip when the ROMs are missing from `emulators/roms/`.
+- [done] `python tools/romcompat.py MDOS.rom 48.rom emulators/roms/Didaktik_*.rom`: no differences at the 58 addresses MDOS uses.
+- [done] `tools/zesarux_next_check.py --rom c:/sys/d80/gama.rom=…` for the loader path and the machine menu.
+- [done 2026-11-17, the user: all steps pass] **Real Next.** Card layout: `/dot/D80` (from `dist/dot/`), `/sys/d80/mdos10.rom`, `/sys/d80/{gama,didm,kompakt}.rom`, `/d80/demo.d80`, and a scratch copy `/d80/test.d80` of the demo disk.
+  1. **Menu, 48K:** `.d80 /d80/demo.d80`. The menu lists 48K, Gama, M, Kompakt. ENTER alone → the Sinclair copyright, then MDOS boots the demo. The bar and the progress report below it are drawn cleanly.
+  2. **Menu keys:** `.d80 /d80/demo.d80`, move the bar with `6`/`7`, ENTER on Didaktik M → the Didaktik M copyright (after 2–3 s). Repeat with the digit keys `2` (Gama, about 4 s to the copyright) and `4` (Kompakt).
+  3. **Each Didaktik ROM, MDOS works:** for each of `2`, `3`, `4`: `CAT` lists `Directory of D80 Demo` and scrolls; `LOAD *"…"` of a BASIC program from the demo runs it; the Didaktik font shows in BASIC.
+  4. **`-4` skips the menu:** `.d80 -4 /sys/d80/kompakt.rom /d80/demo.d80` → no menu, straight to the progress window and the Kompakt.
+  5. **Unknown ROM:** `.d80 -4 /some/other.rom /d80/demo.d80` (e.g. a 128K ROM half) → `Unknown machine ROM`, back to NextZXOS. (Since the menu probing: a missing ROM is not listed, see below.)
+  6. **Write + SNAP free name (MDOS 2.0 fix):** `.d80 -w /d80/test.d80`, choose `3`. Start the demo program, press DRIVE twice (two short presses, a few seconds apart). `CAT` shows `SNAPSHOT00` and `SNAPSHOT01` (1.0 overwrote `00`). Reset, run `.d80 /d80/test.d80` again: both snapshots are still there, and `LOAD *"SNAPSHOT01"` resumes the program.
+  7. **Volume names + MOVE fix:** `.d80 -w /d80/test.d80 -n /d80/dst.d80`, choose `4`. `POKE 49152,85: POKE 49153,170: MOVE "D80 Demo:data*","dst:*"`, then `PRINT PEEK 49152,PEEK 49153` → `85 170` (1.0 gave `0 0`). `CAT "dst:"` (or `CAT "b:"`) lists the copied `data*` files.
+  8. **Disk full:** `.d80 -w -n /d80/full.d40` (a 360K disk), choose `1`. `SAVE *"big1" CODE 0,65535`, `SAVE *"big2" CODE 0,65535`, … until `U Disk full`. `CAT` shows no entry for the file that failed, and a smaller `SAVE *"s" CODE 16384,100` still fits. Reset and load the image again: the same files are there.
+  9. **Hold DRIVE** on each machine opens the D80 menu (with the chosen ROM's font). Swap A:/B: and continue.
+  Then delete `/d80/test.d80`, `/d80/dst.d80` and `/d80/full.d40`.
+- [done 2026-11-17, the user] **Real Next, menu probing:** with all three Didaktik ROMs the menu shows 4 items as before. Rename `gama.rom`: the menu shows `1 ZX Spectrum 48K`, `2 Didaktik M`, `3 Didaktik Kompakt`; `3` takes the Kompakt, `4` does nothing. Rename all three: no menu, `.d80 /d80/demo.d80` goes straight to the 48K. Rename them back.

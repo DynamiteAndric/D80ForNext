@@ -29,7 +29,7 @@ Usage (NextBASIC or the command line):
 
 While loading, a window shows each step with a progress bar. When all is
 ready it says "Press any key"; the next key starts MDOS. Without -4 it
-first asks for the machine (see below).
+first asks for the machine if a Didaktik ROM is on the card (see below).
 
 Writing to the SD card (-w):
   Without -w, disk writes change only the RAM copy and are lost on reset.
@@ -46,10 +46,12 @@ Blank disks (-n):
   overwritten: .d80 stops with "File exists".
 
 Machine menu (Didaktik ROMs):
-  Without -4, .d80 first asks for the machine: 1 ZX Spectrum 48K
+  Without -4, .d80 first asks for the machine, e.g.: 1 ZX Spectrum 48K
   (/machines/next/48.rom), 2 Didaktik Gama (/sys/d80/gama.rom), 3 Didaktik M
   (/sys/d80/didm.rom), 4 Didaktik Kompakt (/sys/d80/kompakt.rom). Press the
-  digit, or the cursor keys and ENTER; ENTER alone takes the 48K. -4 file
+  digit, or the cursor keys and ENTER; ENTER alone takes the 48K. Only the
+  machines whose ROM file is on the card are listed, numbered without
+  gaps; with no Didaktik ROM there is no menu. -4 file
   skips the menu:  .d80 -4 /sys/d80/kompakt.rom /d80/demo.d80
   Accepted by CRC32 (Didaktik ROMs from cygnus.speccy.cz, see above):
   Sinclair 48K (DDEE531F), Didaktik_Gama_1989.rom (45C29401),

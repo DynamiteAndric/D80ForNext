@@ -12,7 +12,8 @@
 ; Loads the MDOS 1.0 ROM (default c:/sys/d80/mdos10.rom) and the 16K ROM:
 ; with -4 the given file, otherwise the machine menu asks for one of
 ; c:/machines/next/48.rom (ZX Spectrum 48K) or c:/sys/d80/gama.rom, didm.rom,
-; kompakt.rom (Didaktik Gama, M, Kompakt); it
+; kompakt.rom (Didaktik Gama, M, Kompakt), listing only the files present
+; (no menu if none of the Didaktik ROMs is there); it
 ; checks both by CRC32 (rom48_crcs lists the accepted 16K ROMs), applies the
 ; patches from mdospatch.asm and loads the image into allocated 8K pages.
 ; Then it turns the Next into a 48K Spectrum with a Didaktik 80 (see
@@ -1114,16 +1115,33 @@ menu_len    equ $-menu_bin
 ; Used only before the ROMs are checked: the CRC table may overwrite it.
 once:
 ; ---- machine menu (no -4): which 16K ROM goes into the alternate ROM ----------
-; The items are the first lines of the progress window; the bar stays on the
-; choice and the progress report goes on below them.  Keys 1-4 choose
-; directly; 6/7 (cursor keys) move the bar, ENTER takes it.  A Didaktik
-; choice puts c:/sys/d80/<file> into name_48.
+; Only the machines whose ROM file is on the card are listed; the 48K is always
+; there (a missing 48.rom fails later, as with -4).  With no Didaktik ROM there
+; is no menu.  The items are numbered 1-n in that order and are the first
+; lines of the progress window; the bar stays on the choice and the progress
+; report goes on below them.  A digit key takes its item directly; 6/7 (cursor
+; keys) move the bar, ENTER takes it.  A Didaktik choice puts
+; c:/sys/d80/<file> into name_48.
 N_ROMS      equ 4
 ROM_ROW     equ WIN_T+2                 ; first item row (the first window line)
 
 choose_rom:
     ld a,(flag_4) : and a : ret nz
-    ld hl,msg_choose : call say         ; the items, then a blank line
+    call probe_roms
+    ld a,(n_avail) : dec a : ret z      ; only the 48K ROM: no menu
+    inc a : ld b,a : ld hl,avail        ; the items, then a blank line
+    ld c,'1'
+.it: push bc : push hl
+    ld a,c : call pr_char
+    ld a,' ' : call pr_char
+    ld a,(hl) : add a,a
+    ld l,a : ld h,0 : ld de,item_msgs : add hl,de
+    ld a,(hl) : inc hl : ld h,(hl) : ld l,a
+    call say
+    pop hl : inc hl : pop bc
+    inc c
+    djnz .it
+    ld hl,msg_nl : call say
     xor a : ld (choice),a
 .loop:
     call .bar
@@ -1137,30 +1155,27 @@ choose_rom:
     jr .scan
 .digit:
     ld e,-1
-.dl: inc e : rra : jr nc,.dl
-    ld a,e : ld (choice),a
+.dl: inc e : rra : jr nc,.dl            ; E = item 0-3
+    ld a,e : ld hl,n_avail : cp (hl)
+    jr nc,.loop                         ; no such item
+    ld (choice),a
     call .bar
     jr .take
 .up:
     ld a,(choice) : and a : jr z,.loop
     dec a : ld (choice),a : jr .loop
 .down:
-    ld a,(choice) : cp N_ROMS-1 : jr z,.loop
+    ld a,(n_avail) : dec a : ld e,a
+    ld a,(choice) : cp e : jr z,.loop
     inc a : ld (choice),a : jr .loop
 .take:
-    ld a,(choice) : and a : ret z       ; the 48K ROM: name_48 as it is
-    add a,a
-    ld l,a : ld h,0 : ld de,rom_files-2 : add hl,de
-    ld a,(hl) : inc hl : ld h,(hl) : ld l,a
-    push hl
-    ld hl,rom_dir : ld de,name_48 : ld bc,11 : ldir
-    pop hl
-.c: ld a,(hl) : ld (de),a : inc hl : inc de
-    and a : jr nz,.c
-    ret
+    ld a,(choice) : ld e,a : ld d,0
+    ld hl,avail : add hl,de
+    ld a,(hl) : and a : ret z           ; the 48K ROM: name_48 as it is
+    ld de,name_48 : jr rom_path
 ; the bar on item (choice), the other items white
 .bar:
-    ld bc,N_ROMS<<8 | ROM_ROW : ld e,0  ; B = items, C = row, E = item
+    ld a,(n_avail) : ld b,a : ld c,ROM_ROW : ld e,0   ; B = items, C = row, E = item
 .d: push bc : push de
     ld a,(choice) : cp e
     ld a,#78 : jr nz,.n                 ; body: white paper, black ink
@@ -1171,13 +1186,54 @@ choose_rom:
     djnz .d
     ret
 
-msg_choose: db "1 ZX Spectrum 48K", 13, "2 Didaktik Gama", 13
-            db "3 Didaktik M", 13, "4 Didaktik Kompakt", 13, 13|#80
+; -> avail = the machines (0-3) whose ROM file opens, 48K first; n_avail
+probe_roms:
+    ld hl,avail : ld (hl),0 : inc hl
+    ld c,1                              ; C = machine
+.p: push bc : push hl
+    ld a,c : ld de,probe_name : call rom_path
+    ld hl,probe_name : push hl : pop ix
+    ld a,'*' : ld b,FA_READ
+    rst #08 : db F_OPEN
+    di
+    jr c,.no
+    rst #08 : db F_CLOSE
+    di
+    pop hl : pop bc
+    ld (hl),c : inc hl
+    jr .nx
+.no: pop hl : pop bc
+.nx: inc c : ld a,c : cp N_ROMS : jr c,.p
+    ld de,avail : and a : sbc hl,de
+    ld a,l : ld (n_avail),a
+    ret
+
+; A = machine 1-3, DE = buffer -> "c:/sys/d80/<file>", 0
+rom_path:
+    add a,a
+    ld l,a : ld h,0 : ld bc,rom_files-2 : add hl,bc
+    ld a,(hl) : inc hl : ld h,(hl) : ld l,a
+    push hl
+    ld hl,rom_dir : ld bc,11 : ldir
+    pop hl
+.c: ld a,(hl) : ld (de),a : inc hl : inc de
+    and a : jr nz,.c
+    ret
+
+item_msgs:  dw msg_i48, msg_igama, msg_im, msg_ikomp
+msg_i48:    db "ZX Spectrum 48K", 13|#80
+msg_igama:  db "Didaktik Gama", 13|#80
+msg_im:     db "Didaktik M", 13|#80
+msg_ikomp:  db "Didaktik Kompakt", 13|#80
+msg_nl:     db 13|#80
 rom_files:  dw name_gama, name_didm, name_kompakt
 rom_dir:    db "c:/sys/d80/"
 name_gama:  db "gama.rom", 0            ; Didaktik_Gama_1989.rom
 name_didm:  db "didm.rom", 0            ; Didaktik_M_1992.rom
 name_kompakt: db "kompakt.rom", 0       ; Didaktik_Kompakt_93.rom
+n_avail:    db 0
+avail:      ds N_ROMS
+probe_name: ds 24
 end:
 ; After the ROM checks the same area holds sd_buf (a sector, the font copy).
 sd_buf      equ once                    ; 512 bytes (768 for the font copy)
