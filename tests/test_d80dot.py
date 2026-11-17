@@ -336,6 +336,36 @@ class TestBlank(unittest.TestCase):
             self.assertEqual(seen[total // 2 - 1], width * (total // 2) // total)
 
     @unittest.skipUnless(D80_BIN.exists() and D80_SYM.exists(), "dot command not built")
+    def test_dot_command_nr06(self):
+        """nr06_fill: every NextReg #06 value the loader leaves behind has bit 3
+        (the yellow Multiface NMI button) clear; bit 4 (DRIVE) is set only in
+        nr06_on; the other bits stay as NextZXOS set them."""
+        sym = {}
+        for line in D80_SYM.read_text().splitlines():
+            name, _, val = line.partition(": EQU ")
+            if val:
+                sym[name] = int(val, 16)
+        win = sym["WIN"] - 0x2000
+        where = {"on": win + sym["MDB_NR06_ON"], "off0": win + sym["MDB_NR06_OFF0"],
+                 "off8": win + sym["MDB_NR06_OFF8"],
+                 "stub": sym["s_nr06"] - sym["STUB"] + sym["stub_src"]}
+        for nr06 in (0x00, 0x08, 0x10, 0x18, 0xA9, 0xFF):
+            mem = bytearray(0x10000)
+            dot = D80_BIN.read_bytes()
+            mem[0x2000:0x2000 + len(dot)] = dot
+            mem[0] = 0x76
+            cpu = Z80(mem)
+            cpu.sp = 0xFF00
+            cpu.push(0x0000)
+            cpu.pc, cpu.a = sym["nr06_fill"], nr06
+            while cpu.pc != 0:
+                cpu.step()
+            got = {k: mem[a] for k, a in where.items()}
+            base = nr06 & ~0x18
+            self.assertEqual(got, {"on": base | 0x10, "off0": base, "off8": base, "stub": base},
+                             f"#06 = {nr06:#04x}")
+
+    @unittest.skipUnless(D80_BIN.exists() and D80_SYM.exists(), "dot command not built")
     def test_dot_command_machine_menu(self):
         """choose_rom lists only the machines whose ROM file opens, skips the
         menu when only the 48K is there, and numbers the items 1-n."""

@@ -66,6 +66,8 @@ start:
     ld (entry_sp),sp
     ld a,#07 : call nr_read : ld (old_turbo),a
     nextreg #07,3                       ; 28 MHz while loading
+    ld a,#06 : call nr_read : ld (old_nr06),a
+    and #F7 : nextreg #06,a             ; the yellow NMI button (Multiface) off
     ld a,WIN_REG : call nr_read : ld (old_win),a
     ld hl,(entry_sp)                    ; the stack must not be in the window
     ld a,h : and #E0 : cp #80
@@ -229,12 +231,7 @@ loaded:
 ; ---- fill the loader data in MDOS B ------------------------------------------
     ld a,(pg_b) : nextreg WIN_REG,a
     ld a,(flag_w) : ld (WIN+MDB_SD_ON-#2000),a
-    ; SNAP: NextReg #06 bit 4 (DivMMC NMI from the DRIVE button) is set while
-    ; the program runs and cleared while MDOS is paged in
-    ld a,#06 : call nr_read
-    or #10 : ld (WIN+MDB_NR06_ON-#2000),a
-    and #EF : ld (WIN+MDB_NR06_OFF0-#2000),a : ld (WIN+MDB_NR06_OFF8-#2000),a
-    ld (s_nr06-STUB+stub_src),a
+    ld a,(old_nr06) : call nr06_fill
     ld a,(old_win) : nextreg WIN_REG,a
     ld hl,msg_key : call say            ; wait for a key, then start
 .rel: xor a : in a,(#FE) : cpl : and #1F : jr nz,.rel
@@ -1018,6 +1015,17 @@ fail:
     xor a : scf                         ; A = 0, HL = message: NextZXOS custom error
     ret
 
+; A = NextReg #06 as NextZXOS left it -> the values that MDOS B (in WIN) and
+; the start stub write to it.  Bit 3 (Multiface NMI, the yellow button) is
+; always clear: the button does nothing.  Bit 4 (DivMMC NMI, the DRIVE button)
+; is set while the program runs (nr06_on) and clear while MDOS is paged in.
+nr06_fill:
+    and #F7
+    or #10 : ld (WIN+MDB_NR06_ON-#2000),a
+    and #EF : ld (WIN+MDB_NR06_OFF0-#2000),a : ld (WIN+MDB_NR06_OFF8-#2000),a
+    ld (s_nr06-STUB+stub_src),a
+    ret
+
 restore_ok:
     ld sp,(entry_sp)
     call restore
@@ -1027,6 +1035,7 @@ restore_ok:
 restore:
     ld a,(old_win) : nextreg WIN_REG,a
     ld a,(old_turbo) : nextreg #07,a
+    ld a,(old_nr06) : nextreg #06,a
     ei
     ret
 
@@ -1080,6 +1089,7 @@ args:       dw 0
 err_msg:    dw 0
 entry_sp:   dw 0
 old_turbo:  db 0
+old_nr06:   db 0                        ; NextReg #06 as NextZXOS left it
 old_win:    db 0
 handle:     db #FF
 crc:        ds 4

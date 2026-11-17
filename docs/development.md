@@ -17,6 +17,7 @@ It needs sjasmplus in `tools/sjasmplus/` (git ignores it) and writes `dot/build/
 - The standard 48K ROM goes, unmodified, into the alternate ROM.
 - The FDC driver is replaced by a copy from the image, which is loaded into RAM pages.
 - SNAP: the DRIVE NMI automaps DivMMC instantly at `#0066` (NextReg `#BB` bit 1), where MDOS holds `RST 0`. NextReg `#06` bit 4 (DRIVE NMI) is set only while MDOS is paged out.
+- The yellow NMI button (Multiface, NextReg `#06` bit 3) is off from the start of the loader on: `nr06_fill` clears bit 3 in every `#06` value MDOS B and the stub write, and `restore` puts NextZXOS's value back if loading fails. The Multiface menu pages over `#0000-#3FFF` and froze the Next.
 - With `-w`, sector writes also go to the card (CMD24) through the shared SPI code in `dot/sdspi.asm`.
 - The D80 menu keeps the program's registers in MDOS RAM and saves/restores the part of the screen it uses. A disk swap is refused while MDOS still holds an unwritten FAT, which cannot happen between commands.
 

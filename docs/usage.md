@@ -148,6 +148,7 @@ After a swap, MDOS reads the FAT and directory again. Disks addressed by *name* 
 - A 720K image needs 90 free 8K pages; two images need a 2 MB Next.
 - `-w` needs an image in at most 128 fragments on the card.
 - While `.d80` runs, the DRIVE button no longer opens the NextZXOS NMI menu.
+- The yellow NMI button (Multiface) does nothing while `.d80` runs, with every ROM. Its Multiface menu cannot work with MDOS and froze the Next. (On a real 48K, M or Kompakt, NMI resets the machine through the ROM's well-known `#0066` bug; the Gama ignores it.)
 - Leave with a hard reset.
 
 ## Troubleshooting

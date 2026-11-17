@@ -88,7 +88,8 @@ The Next becomes a 48K Spectrum with a Didaktik 80. Then use RUN (loads the
 
 Limits: 48K only, MDOS 1.0 only; at most two drives; a 720K image needs
 90 free 8K pages (two images: a 2 MB Next); -w needs an image in at most
-128 fragments. The DRIVE button no longer opens the NextZXOS NMI menu.
+128 fragments. The DRIVE button no longer opens the NextZXOS NMI menu, and
+the yellow NMI button (Multiface) does nothing.
 Leave with a hard reset.
 NextReg #7F holds the last progress marker: #07 = waiting for the key,
 #E3 = MDOS started; bit 7 set = .d80 failed at step (marker AND #7F),
