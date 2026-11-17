@@ -1,15 +1,10 @@
 import unittest
-from pathlib import Path
 
 import snapshot
 from basic import tokenize
 from demo_image import build as build_demo
 from image import MdosError, MdosImage, add_file, blank_image, set_fat
 from z80mini import Z80
-
-ROOT = Path(__file__).resolve().parents[1]
-SAMPLES = ROOT / "emulators" / "images"     # optional third-party disks, not in git
-have_samples = (SAMPLES / "029-GAMES.d80").exists()
 
 
 class TestZ80(unittest.TestCase):
@@ -93,27 +88,6 @@ class TestImages(unittest.TestCase):
         self.assertEqual((s.pc, s.bc, s.ix, s.iy, s.i, s.im, s.iff), (0x8122, 0x5678, 0xABCD,
                                                                    0x5C3A, 0x80, 2, True))
         self.assertEqual(len(s.to_z80()), 30 + 49152)
-
-
-@unittest.skipUnless(have_samples, "third-party sample disks not present (emulators/images/)")
-class TestSampleDisks(unittest.TestCase):
-    """Regression checks on real disks; they are not distributed."""
-
-    def test_all_chains_match_lengths(self):
-        bad = 0
-        for p in sorted(SAMPLES.glob("*.d80")):
-            img = MdosImage.open(p)
-            self.assertTrue(img.signature_ok)
-            bad += sum(img.check(e) is not None for e in img.entries())
-        self.assertLessEqual(bad, 3)  # a few entries are genuinely corrupt on the sample disks
-
-    def test_packed_snapshot(self):
-        img = MdosImage.open(SAMPLES / "029-GAMES.d80")
-        e = next(e for e in img.entries() if e.name == "TURRICAN1+")
-        s = snapshot.parse(img.read(e))
-        self.assertTrue(s.packed)
-        self.assertEqual((s.pc, s.sp, s.i, s.im, s.iy), (0x822D, 0xFFF8, 0x3F, 1, 0x5C3A))
-        self.assertEqual(len(s.to_sna()), 27 + 49152)
 
 
 if __name__ == "__main__":

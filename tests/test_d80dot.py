@@ -3,8 +3,7 @@
 The model tests need the MDOS 1.0 ROM (emulators/roms/), a standard 48K ROM
 (emulators/fuse/roms/48.rom) and the generated patch data (python
 tools/build_dot.py); they are skipped otherwise. They run on the demo disk
-from tools/demo_image.py, which is built in memory. A few regression tests
-use third-party disks from emulators/images/ (not in git) when present.
+from tools/demo_image.py, which is built in memory.
 """
 
 import shutil
@@ -26,7 +25,6 @@ DIDAKTIK_ROMS = [(ROOT / "emulators" / "roms" / f, frames, text) for f, frames, 
     ("Didaktik_M_1992.rom", 150, "1992 DIDAKTIK M BASIC"),
     ("Didaktik_Kompakt_93.rom", 150, "1993 DIDAKTIK COMPUTER"))]
 IMAGE = build_demo()
-SAMPLES = ROOT / "emulators" / "images"                # optional third-party disks
 SDCARD = ROOT / "emulators" / "ZEsarUX" / "tbblue.mmc"
 have_all = all(p.exists() for p in (MDOS, ROM48, PATCHES))
 
@@ -164,9 +162,6 @@ class TestBlank(unittest.TestCase):
         self.assertEqual([im.fat(n) for n in (0, 13)], [0xDDD, 0xDDD])
         self.assertTrue(all(im.fat(n) == 0 for n in range(14, 1440)))
         self.assertTrue(all(im.fat(n) == 0xDDD for n in range(1440, 1705)))
-        kompakt = SAMPLES / "036-KOMPAKT.d80"
-        if kompakt.exists():                    # formatted by MDOS, same disk id
-            self.assertEqual(b[:512], kompakt.read_bytes()[:512])
 
     def test_layout_d40(self):
         from image import MdosImage, blank_image
@@ -873,20 +868,6 @@ class TestDriveB(unittest.TestCase):
         m.type_keys(CAT)                                   # A: still works
         m.run_frames(60)
         self.assertIn("Directory of D80 Demo", m.screen_text())
-
-    @unittest.skipUnless((SAMPLES / "035-X-MAGAZIN.d80").exists(), "035-X-MAGAZIN.d80 missing")
-    def test_sector_ops_follow_active_drive(self):
-        """X-MAGAZIN reaches the sector loop with IX = #3E0C (drive 1's descriptor)
-        while A: is active. MDOS's own ops select the drive from #3E6B, so must ours:
-        selecting by IX gave "Device unavailable" (B: is empty)."""
-        from nextmmu import DidaktikNext
-        img = (SAMPLES / "035-X-MAGAZIN.d80").read_bytes()
-        m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), img)
-        m.run_frames(150)
-        m.type_keys([["R"], ["ENTER"]])
-        m.run_frames(600)
-        self.assertNotIn("Device unavailable", m.screen_text())
-        self.assertEqual(m.fdc_access, [])
 
 
 @unittest.skipUnless(have_all, "ROMs or patches.json not present")

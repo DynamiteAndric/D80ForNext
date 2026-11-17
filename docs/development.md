@@ -91,7 +91,7 @@ The tests run on the demo disk, which they build in memory with `tools/demo_imag
 python tools/demo_image.py dist/d80/demo.d80
 ```
 
-A few regression checks (the SNAPSHOT-PACKER unpacker, a disk that reaches the sector loop with the other drive's descriptor) need real third-party disks. Put them in `emulators/images/` (git ignores it) to run those checks; otherwise they are skipped.
+The tests use only generated disks (`tools/demo_image.py`, `image.blank_image`); real third-party disks in `emulators/images/` (git ignores it) are for manual testing only.
 
 ## Checking without hardware
 
