@@ -83,6 +83,20 @@ NR_PERIPH2  equ #06             ; bit 4: DivMMC NMI from the DRIVE button (SNAP)
     ret
     BLOCK 7, 0
 
+    ; Fixes taken over from MDOS 2.0 (1993); the new code is in MDB (fix_*).
+    ; See docs/plan-didaktik-machines.md.
+    ORG #033A                   ; SNAP: was EI / LD HL,#3F80
+    call fix_snap_name          ; next free SNAPSHOTnn, HL = #3F80
+    ei
+    ORG #0CDE : jp nz,fix_disk_full ; SAVE: was JP NZ,#20BC (2.0: no clean-up here)
+    ORG #0EB7 : jp nz,fix_disk_full
+    ORG #1AAB                   ; MOVE: was LD (#C000),BC, a stray write
+    nop : nop : nop : nop       ; into the program's memory
+    ORG #1ACD                   ; MOVE: was LD A,#FF / LD (#3E79),A / CALL #1C8F
+    nop : nop
+    call fix_move_count         ; count the matching files first ...
+    call fix_move_next          ; #1AD2: ... and copy only that many (#1C03 loops here)
+
 ; ===========================================================================
 ; MDB: MDOS #2000-#37FF + RAM (page 1 of this build): FDC driver replaced
 ; ===========================================================================
@@ -156,6 +170,9 @@ sf_fail:
     ORG #25BC
     ld (#3EE9),a
     ret
+
+; --- disk full during MOVE: delete the half-made file (MDOS 2.0 fix)
+    ORG #20BC : jp fix_disk_full_clean  ; was CALL #217B (LD A,#1D / JP #0204 follow)
 
 ; ---------------------------------------------------------------------------
 ; New code in the unused EPROM area
@@ -460,6 +477,7 @@ m_de2:      dw 0
 m_hl2:      dw 0
 SD_STACK    equ #2900           ; private stack #28A0-#28FF
     ASSERT $ <= #28A0, loader data overlaps the sd_put stack
+FIXES       equ #2E00           ; fixes from MDOS 2.0 (up to SD_MAP)
 SD_MAP      equ #3000           ; DISK_FILEMAP extents of the image file
 SD_MAX      equ 128             ; 6 bytes each: up to #32FF
 SD_MAP_B    equ #3480           ; the same for drive B: (up to #377F)
@@ -488,7 +506,90 @@ sd_put:
     ret
 
     INCLUDE "sdspi.asm"
-    ASSERT $ <= SD_MAP, SD code overlaps the extent table
+    ASSERT $ <= FIXES, SD code overlaps the MDOS 2.0 fixes
+
+; ---------------------------------------------------------------------------
+; Fixes taken over from MDOS 2.0 (1993), the same code as 2.0 #1620-#16A8.
+; The MDOS 1.0 routines they call are the same bytes in 2.0.
+; ---------------------------------------------------------------------------
+DIR_RESET   equ #217B           ; forget the buffered FAT/directory state
+DIR_READ    equ #1C8F           ; read the directory of the drive in #3E80
+FIND_FILE   equ #212B           ; find the name at #3E80: Z = found, HL = entry
+FIND_NEXT   equ #212D           ; ... from entry A + 1
+ERASE_ENTRY equ #1F88           ; mark entry HL deleted, free its FAT chain
+FAT_FLUSH   equ #1D9D           ; write the FAT back
+MDOS_ERROR  equ #0204           ; A = MDOS error number
+MOVE_DONE   equ #1C06           ; "n File(s) copied."
+SNAP_DIGITS equ #3E92           ; the "nn" of SNAPSHOTnn in the name at #3E8A
+MOVE_LEFT   equ #3EFB           ; files MOVE still copies (free in 1.0, used by 2.0)
+ERR_FULL    equ #1D             ; "Disk full"
+
+    ORG FIXES
+; SNAP (#033A): 1.0 overwrites an existing SNAPSHOTnn (the counter starts
+; at 00 after every reset).  Count nn up until the name is free.
+fix_snap_name:
+    call DIR_RESET
+    call DIR_READ
+    call FIND_FILE
+    jr nz,.free
+    ld hl,SNAP_DIGITS+1
+    inc (hl)
+    ld a,(hl)
+    cp '9'+1
+    jr c,fix_snap_name
+    ld (hl),'0'
+    dec hl
+    inc (hl)
+    jr fix_snap_name
+.free:
+    ld hl,#3F80                 ; (the instruction this call replaces)
+    ret
+
+; MOVE (#1ACD): count the matching files before copying.  Without the
+; count, MOVE onto the same disk would find its own copies again.
+fix_move_count:
+    call DIR_READ
+    xor a
+    ld (MOVE_LEFT),a
+    dec a
+.next:
+    call FIND_NEXT
+    jr nz,.done
+    ld hl,MOVE_LEFT
+    inc (hl)
+    jr .next
+.done:
+    ld a,#FF
+    ld (#3E79),a                ; (the instructions this replaces)
+    ret
+
+; MOVE (#1AD2): next file, or the end after the counted number of files
+fix_move_next:
+    ld hl,MOVE_LEFT
+    ld a,(hl)
+    and a
+    jr z,.end
+    dec a
+    ld (hl),a
+    jp DIR_READ
+.end:
+    pop af                      ; (our return address)
+    jp MOVE_DONE
+
+; Disk full during MOVE (#20BC from #0D42, #1B4E, #1C26): 1.0 leaves the new
+; directory entry behind with an empty FAT chain.  Delete it.
+fix_disk_full_clean:
+    call DIR_RESET
+    call FIND_FILE
+    jr nz,fix_disk_full         ; (2.0 does not check)
+    call ERASE_ENTRY
+    call FAT_FLUSH
+; Disk full during SAVE (#0CDE, #0EB7): as 1.0
+fix_disk_full:
+    call DIR_RESET
+    ld a,ERR_FULL
+    jp MDOS_ERROR
+    ASSERT $ <= SD_MAP, MDOS 2.0 fixes overlap the extent table
 
 ; ---------------------------------------------------------------------------
 ; Paging and the SNAP button (after the extent table)

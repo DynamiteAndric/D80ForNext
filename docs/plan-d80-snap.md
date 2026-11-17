@@ -33,6 +33,7 @@ A user program that happens to run 48K ROM code at one of these addresses at the
 - [done 2026-11-15] **Real Next hardware:** the user confirmed that SNAP works on a real Next, including:
   - with `-w`, the snapshot loads back after a reset;
   - a press during `CAT` / `LOAD *` is ignored.
+- [done 2026-11-17, model, ZEsarUX and a real Next] **Yellow NMI button (Multiface):** it froze the Next with every ROM. The loader never touched NextReg `#06` bit 3, so the Multiface menu paged in over MDOS and the 48K ROM. Now bit 3 is cleared at start and in every `#06` value (`nr06_fill`, `TestBlank.test_dot_command_nr06`), and restored if loading fails. ZEsarUX: NextZXOS leaves `#06` = `#A8`; while `.d80` waits for a key and after `JP 0` it is `#A0`; after a failed load `#A8` again.
 
 ## Verification
 - `tools/nextmmu.py` models NextReg `#06`, the button NMI, the instant `#0066` automap and the NMI hold.

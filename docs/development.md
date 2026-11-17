@@ -17,6 +17,7 @@ It needs sjasmplus in `tools/sjasmplus/` (git ignores it) and writes `dot/build/
 - The standard 48K ROM goes, unmodified, into the alternate ROM.
 - The FDC driver is replaced by a copy from the image, which is loaded into RAM pages.
 - SNAP: the DRIVE NMI automaps DivMMC instantly at `#0066` (NextReg `#BB` bit 1), where MDOS holds `RST 0`. NextReg `#06` bit 4 (DRIVE NMI) is set only while MDOS is paged out.
+- The yellow NMI button (Multiface, NextReg `#06` bit 3) is off from the start of the loader on: `nr06_fill` clears bit 3 in every `#06` value MDOS B and the stub write, and `restore` puts NextZXOS's value back if loading fails. The Multiface menu pages over `#0000-#3FFF` and froze the Next.
 - With `-w`, sector writes also go to the card (CMD24) through the shared SPI code in `dot/sdspi.asm`.
 - The D80 menu keeps the program's registers in MDOS RAM and saves/restores the part of the screen it uses. A disk swap is refused while MDOS still holds an unwritten FAT, which cannot happen between commands.
 
@@ -26,6 +27,7 @@ Design notes and history:
 - [plan-d80-sd-write.md](plan-d80-sd-write.md) — writing to the SD card (`-w`)
 - [plan-d80-snap.md](plan-d80-snap.md) — the SNAP button
 - [plan-d80-drives-menu.md](plan-d80-drives-menu.md) — blank images, drive B:, the D80 menu
+- [plan-didaktik-machines.md](plan-didaktik-machines.md) — Didaktik Gama/M/Kompakt ROMs; MDOS 2.0 compared and its fixes ported
 - [plan-demo-disk.md](plan-demo-disk.md) — the generated demo disk that replaced the third-party samples
 - [mdos10-notes.md](mdos10-notes.md) — MDOS 1.0 disassembly notes
 - [snap-button.md](snap-button.md) — how the SNAP button works on the original hardware
@@ -44,6 +46,7 @@ Pure Python 3.10+ with no dependencies. Run the scripts from the project root as
 | `basic.py` | Tokenizes 48K BASIC source text into a program, as `SAVE` stores it |
 | `make_release.py` | Builds the `dist/` zip and publishes a GitHub release |
 | `demo_image.py` | Builds the demo disk `dist/d80/demo.d80` (BASIC menu, IM 2 machine-code demo, data files) |
+| `romcompat.py` | Checks that a Didaktik (or other) 16K ROM keeps every 48K ROM address MDOS uses, before its CRC is added to `rom48_crcs` |
 | `mdospatch.py` | Applies the `.d80` patches to a user-supplied MDOS ROM and lays out the RAM pages |
 | `nextmmu.py` | Python model of the `.d80` runtime on the Next (DivMMC automap, NextRegs, SD card), used by the tests |
 | `emu48.py`, `z80mini.py` | Minimal 48K Spectrum harness and the Z80 core it runs on |
@@ -88,7 +91,7 @@ The tests run on the demo disk, which they build in memory with `tools/demo_imag
 python tools/demo_image.py dist/d80/demo.d80
 ```
 
-A few regression checks (the SNAPSHOT-PACKER unpacker, a disk that reaches the sector loop with the other drive's descriptor) need real third-party disks. Put them in `emulators/images/` (git ignores it) to run those checks; otherwise they are skipped.
+The tests use only generated disks (`tools/demo_image.py`, `image.blank_image`); real third-party disks in `emulators/images/` (git ignores it) are for manual testing only.
 
 ## Checking without hardware
 

@@ -26,7 +26,7 @@ python tools/zesarux_next_check.py out/x --mdos MDOS.rom --image dist/d80/demo.d
 
 - `tools/sjasmplus/` — the assembler (`sjasmplus-1.24.0.win/sjasmplus.exe`), needed by `build_dot.py`.
 - `emulators/roms/Didaktik_40-80_MDOS_v1_91.rom` (CRC32 `545531FA`) and `emulators/fuse/roms/48.rom` — tests that need them skip without them.
-- `emulators/images/` — real third-party disks, used only by a few optional regression tests (`SAMPLES` in the tests).
+- `emulators/images/` — real third-party disks for manual testing; no test uses them.
 - `emulators/ZEsarUX/`, `emulators/fuse/` — emulators.
 
 Never commit ROMs, third-party disk images or anything holding long runs of ROM bytes. `test_build_is_rom_free` guards `patches.json`. Test/demo disk content must be generated (see below).

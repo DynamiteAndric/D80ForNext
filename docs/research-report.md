@@ -122,7 +122,7 @@ Sources: SpectrumNext FPGA `cores/zxnext/nextreg.txt`; Klive IDE book, appendice
   - the SNAP button on the Next's DRIVE button ([plan-d80-snap.md](plan-d80-snap.md));
   - blank images (`-n`), drive B: and the D80 menu on a held DRIVE button ([plan-d80-drives-menu.md](plan-d80-drives-menu.md)).
 - **Option 1 (PC converter) removed (2026-11-16):** with `.d80` working, the converter (`list`/`basic`/`extract`/`convert`/`snap`) was removed; see [plan-python-converter.md](plan-python-converter.md) for its history.
-- **Open:** loading only the used sectors on 1 MB machines. 128K mode and MDOS 2.0 (D80 v2) are not planned. See [plan-d80-dot-command.md](plan-d80-dot-command.md).
+- **Open:** loading only the used sectors on 1 MB machines. 128K mode is not planned. MDOS 2.0 (D80 v2, Kompakt) is not needed; its fixes are ported to the 1.0 patches, see [plan-didaktik-machines.md](plan-didaktik-machines.md). See [plan-d80-dot-command.md](plan-d80-dot-command.md).
 
 ## Sources
 

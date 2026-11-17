@@ -7,6 +7,9 @@ Copy the contents of this folder to the root of the Next SD card:
   /sys/d80/mdos10.rom    MDOS 1.0 ROM (Didaktik_40-80_MDOS_v1_91.rom, CRC32 545531FA),
                          not included; download it from
                          https://cygnus.speccy.cz/download_roms.php
+  /sys/d80/gama.rom      optional Didaktik ROMs for the machine menu, not
+  /sys/d80/didm.rom      included (Didaktik_Gama_1989.rom, Didaktik_M_1992.rom,
+  /sys/d80/kompakt.rom   Didaktik_Kompakt_93.rom from the same page)
   /d80/demo.d80          a demo disk (RUN starts its menu)
 
 The standard 48K ROM is taken from /machines/next/48.rom, which is part of
@@ -25,7 +28,8 @@ Usage (NextBASIC or the command line):
   .d80 "c:/my disks/game.d80"            (quotes allow spaces and ':')
 
 While loading, a window shows each step with a progress bar. When all is
-ready it says "Press any key"; the next key starts MDOS.
+ready it says "Press any key"; the next key starts MDOS. Without -4 it
+first asks for the machine if a Didaktik ROM is on the card (see below).
 
 Writing to the SD card (-w):
   Without -w, disk writes change only the RAM copy and are lost on reset.
@@ -40,6 +44,22 @@ Blank disks (-n):
   360K D40 (40 tracks) for a *.d40 name, otherwise 720K D80. The disk name
   is the file name (up to 10 characters). An existing file is never
   overwritten: .d80 stops with "File exists".
+
+Machine menu (Didaktik ROMs):
+  Without -4, .d80 first asks for the machine, e.g.: 1 ZX Spectrum 48K
+  (/machines/next/48.rom), 2 Didaktik Gama (/sys/d80/gama.rom), 3 Didaktik M
+  (/sys/d80/didm.rom), 4 Didaktik Kompakt (/sys/d80/kompakt.rom). Press the
+  digit, or the cursor keys and ENTER; ENTER alone takes the 48K. Only the
+  machines whose ROM file is on the card are listed, numbered without
+  gaps; with no Didaktik ROM there is no menu. -4 file
+  skips the menu:  .d80 -4 /sys/d80/kompakt.rom /d80/demo.d80
+  Accepted by CRC32 (Didaktik ROMs from cygnus.speccy.cz, see above):
+  Sinclair 48K (DDEE531F), Didaktik_Gama_1989.rom (45C29401),
+  Didaktik_M_1992.rom (57264D4F), Didaktik_Kompakt_93.rom (34752ABA).
+  Other ROMs stop with "Unknown machine ROM". Not emulated: the
+  Gama's second 32K bank (OUT 95,1), the 8255 printer port, and the
+  Didaktik ULA timing (the Next uses 48K timing). OUT 31 also drives the
+  Next's DAC A if the DACs are enabled. The ROMs are not included.
 
 Drive B:
   A second image goes into drive B:. In MDOS use the drive letter:
@@ -68,7 +88,8 @@ The Next becomes a 48K Spectrum with a Didaktik 80. Then use RUN (loads the
 
 Limits: 48K only, MDOS 1.0 only; at most two drives; a 720K image needs
 90 free 8K pages (two images: a 2 MB Next); -w needs an image in at most
-128 fragments. The DRIVE button no longer opens the NextZXOS NMI menu.
+128 fragments. The DRIVE button no longer opens the NextZXOS NMI menu, and
+the yellow NMI button (Multiface) does nothing.
 Leave with a hard reset.
 NextReg #7F holds the last progress marker: #07 = waiting for the key,
 #E3 = MDOS started; bit 7 set = .d80 failed at step (marker AND #7F),

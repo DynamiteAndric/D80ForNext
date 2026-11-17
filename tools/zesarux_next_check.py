@@ -2,6 +2,7 @@
 
     python tools/zesarux_next_check.py OUTDIR --mdos MDOS.rom --image disk.d80
         [--image-b disk2.d80] [--command ".d80 {image} {image_b}"] [--steps "wait:25,shot:boot,keys:R,ascii:13,wait:20,shot:run"]
+        [--rom /sys/d80/gama.rom=Didaktik_Gama_1989.rom ...]
 
 A working copy of emulators/ZEsarUX/tbblue.mmc (NextZXOS) gets
 /dot/D80 (dot/build/D80), /sys/d80/mdos10.rom and /d80/<image>, and its
@@ -62,7 +63,7 @@ def put_image(fs: Fat16, image: Path, used: set[str]) -> str:
 
 
 def prepare_sd(out: Path, mdos: Path, image: Path, command: str,
-               image_b: Path | None = None) -> tuple[Path, str]:
+               image_b: Path | None = None, roms: dict[str, Path] | None = None) -> tuple[Path, str]:
     sd = out / "sd.mmc"
     shutil.copyfile(ZDIR / "tbblue.mmc", sd)
     fs = Fat16(sd)
@@ -71,6 +72,8 @@ def prepare_sd(out: Path, mdos: Path, image: Path, command: str,
     fs.put("/machines/next/CONFIG.INI", cfg)
     fs.put("/dot/D80", (ROOT / "dot" / "build" / "D80").read_bytes())
     fs.put("/sys/d80/mdos10.rom", mdos.read_bytes())
+    for card_path, local in (roms or {}).items():     # e.g. the Didaktik ROMs of the machine menu
+        fs.put(card_path, local.read_bytes())
     used: set[str] = set()
     a = put_image(fs, image, used)
     b = put_image(fs, image_b, used) if image_b else ""
@@ -87,11 +90,14 @@ def main() -> None:
     ap.add_argument("--image-b", help="second image for drive B: ({image_b} in --command)")
     ap.add_argument("--command", default=".d80 {image} {image_b}")
     ap.add_argument("--steps", default="wait:25,shot:boot")
+    ap.add_argument("--rom", action="append", default=[], metavar="CARDPATH=FILE",
+                    help="put FILE on the card as CARDPATH (8.3 names)")
     a = ap.parse_args()
     out = Path(a.outdir).resolve()
     out.mkdir(parents=True, exist_ok=True)
+    roms = {c: Path(f) for c, _, f in (r.partition("=") for r in a.rom)}
     sd, line = prepare_sd(out, Path(a.mdos), Path(a.image), a.command,
-                          Path(a.image_b) if a.image_b else None)
+                          Path(a.image_b) if a.image_b else None, roms)
     print(f"autoexec: {line}")
 
     proc = subprocess.Popen(

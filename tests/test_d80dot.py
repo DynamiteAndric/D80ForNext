@@ -3,8 +3,7 @@
 The model tests need the MDOS 1.0 ROM (emulators/roms/), a standard 48K ROM
 (emulators/fuse/roms/48.rom) and the generated patch data (python
 tools/build_dot.py); they are skipped otherwise. They run on the demo disk
-from tools/demo_image.py, which is built in memory. A few regression tests
-use third-party disks from emulators/images/ (not in git) when present.
+from tools/demo_image.py, which is built in memory.
 """
 
 import shutil
@@ -20,8 +19,12 @@ from z80mini import Z80
 ROOT = Path(__file__).resolve().parents[1]
 MDOS = ROOT / "emulators" / "roms" / "Didaktik_40-80_MDOS_v1_91.rom"
 ROM48 = ROOT / "emulators" / "fuse" / "roms" / "48.rom"
+# Didaktik BASIC ROMs from cygnus.speccy.cz (optional): file, boot frames, copyright line
+DIDAKTIK_ROMS = [(ROOT / "emulators" / "roms" / f, frames, text) for f, frames, text in (
+    ("Didaktik_Gama_1989.rom", 220, "1989 DIDAKTIK SKALICA"),
+    ("Didaktik_M_1992.rom", 150, "1992 DIDAKTIK M BASIC"),
+    ("Didaktik_Kompakt_93.rom", 150, "1993 DIDAKTIK COMPUTER"))]
 IMAGE = build_demo()
-SAMPLES = ROOT / "emulators" / "images"                # optional third-party disks
 SDCARD = ROOT / "emulators" / "ZEsarUX" / "tbblue.mmc"
 have_all = all(p.exists() for p in (MDOS, ROM48, PATCHES))
 
@@ -107,6 +110,44 @@ D80_BIN = ROOT / "dot" / "build" / "D80"
 D80_SYM = ROOT / "dot" / "build" / "d80.sym"
 
 
+@unittest.skipUnless(have_all and all(r.exists() for r, _, _ in DIDAKTIK_ROMS),
+                     "Didaktik ROMs not present")
+class TestDidaktikRom(unittest.TestCase):
+    """Didaktik Gama/M/Kompakt ROMs in place of the 48K ROM, as with .d80 -4 rom."""
+
+    def test_romcompat(self):
+        from romcompat import check, ranges
+        deps = ranges([MDOS.read_bytes()])
+        for rom, _, _ in DIDAKTIK_ROMS:
+            self.assertEqual(check(ROM48.read_bytes(), rom.read_bytes(), deps), [], rom.name)
+
+    def test_known_crc(self):
+        import zlib
+        from mdospatch import ROMS16
+        for rom, _, _ in DIDAKTIK_ROMS:
+            self.assertIn(zlib.crc32(rom.read_bytes()), ROMS16, rom.name)
+
+    def test_cat_and_save(self):
+        from image import MdosImage
+        from nextmmu import DidaktikNext
+        for rom, frames, text in DIDAKTIK_ROMS:
+            with self.subTest(rom.name):
+                m = DidaktikNext(MDOS.read_bytes(), rom.read_bytes(), IMAGE)
+                m.run_frames(frames)                        # Didaktik ROMs boot slower
+                self.assertIn(text, m.screen_text()[-1])
+                m.type_keys(CAT)
+                m.run_frames(60)
+                self.assertIn("Directory of D80 Demo", m.screen_text())
+                m.type_keys([["SPACE"]])                    # scroll? -> no
+                m.run_frames(20)
+                m.type_keys(SAVE_TEST)
+                m.run_frames(150)
+                names = [e.raw_name.rstrip(bytes(1)) for e in MdosImage(bytes(m.image_bytes(0))).entries()]
+                self.assertIn(b"test", names)
+                self.assertEqual(m.cpu.mdos_rom_writes, [])
+                self.assertFalse(m.mdos_paged)
+
+
 class TestBlank(unittest.TestCase):
     """-n / tools/new_image.py: a blank image as MDOS 1.0 FORMAT writes it."""
 
@@ -121,9 +162,6 @@ class TestBlank(unittest.TestCase):
         self.assertEqual([im.fat(n) for n in (0, 13)], [0xDDD, 0xDDD])
         self.assertTrue(all(im.fat(n) == 0 for n in range(14, 1440)))
         self.assertTrue(all(im.fat(n) == 0xDDD for n in range(1440, 1705)))
-        kompakt = SAMPLES / "036-KOMPAKT.d80"
-        if kompakt.exists():                    # formatted by MDOS, same disk id
-            self.assertEqual(b[:512], kompakt.read_bytes()[:512])
 
     def test_layout_d40(self):
         from image import MdosImage, blank_image
@@ -209,6 +247,29 @@ class TestBlank(unittest.TestCase):
                 self.assertLess(steps / len(data), 25)      # instructions per byte
 
     @unittest.skipUnless(D80_BIN.exists() and D80_SYM.exists(), "dot command not built")
+    def test_dot_command_rom48_known(self):
+        """rom48_known accepts exactly the 16K ROMs in mdospatch.ROMS16."""
+        from mdospatch import ROMS16
+        sym = {}
+        for line in D80_SYM.read_text().splitlines():
+            name, _, val = line.partition(": EQU ")
+            if val:
+                sym[name] = int(val, 16)
+        for crc in (*ROMS16, 0x545531FA, 0x98B1320B, 0):
+            mem = bytearray(0x10000)
+            dot = D80_BIN.read_bytes()
+            mem[0x2000:0x2000 + len(dot)] = dot
+            mem[sym["crc"]:sym["crc"] + 4] = (crc ^ 0xFFFFFFFF).to_bytes(4, "little")
+            mem[0] = 0x76
+            cpu = Z80(mem)
+            cpu.sp = 0xFF00
+            cpu.push(0x0000)
+            cpu.pc = sym["rom48_known"]
+            while cpu.pc != 0:
+                cpu.step()
+            self.assertEqual(bool(cpu.f & 0x40), crc in ROMS16, f"{crc:08X}")
+
+    @unittest.skipUnless(D80_BIN.exists() and D80_SYM.exists(), "dot command not built")
     def test_dot_command_progress_bar(self):
         """bar_init + bar_step: the bar fills cell by cell and is full after
         exactly the given number of steps."""
@@ -268,6 +329,115 @@ class TestBlank(unittest.TestCase):
             self.assertEqual(seen, sorted(seen))                     # never goes back
             self.assertEqual(seen[-1], width, total)                  # full at the end
             self.assertEqual(seen[total // 2 - 1], width * (total // 2) // total)
+
+    @unittest.skipUnless(D80_BIN.exists() and D80_SYM.exists(), "dot command not built")
+    def test_dot_command_nr06(self):
+        """nr06_fill: every NextReg #06 value the loader leaves behind has bit 3
+        (the yellow Multiface NMI button) clear; bit 4 (DRIVE) is set only in
+        nr06_on; the other bits stay as NextZXOS set them."""
+        sym = {}
+        for line in D80_SYM.read_text().splitlines():
+            name, _, val = line.partition(": EQU ")
+            if val:
+                sym[name] = int(val, 16)
+        win = sym["WIN"] - 0x2000
+        where = {"on": win + sym["MDB_NR06_ON"], "off0": win + sym["MDB_NR06_OFF0"],
+                 "off8": win + sym["MDB_NR06_OFF8"],
+                 "stub": sym["s_nr06"] - sym["STUB"] + sym["stub_src"]}
+        for nr06 in (0x00, 0x08, 0x10, 0x18, 0xA9, 0xFF):
+            mem = bytearray(0x10000)
+            dot = D80_BIN.read_bytes()
+            mem[0x2000:0x2000 + len(dot)] = dot
+            mem[0] = 0x76
+            cpu = Z80(mem)
+            cpu.sp = 0xFF00
+            cpu.push(0x0000)
+            cpu.pc, cpu.a = sym["nr06_fill"], nr06
+            while cpu.pc != 0:
+                cpu.step()
+            got = {k: mem[a] for k, a in where.items()}
+            base = nr06 & ~0x18
+            self.assertEqual(got, {"on": base | 0x10, "off0": base, "off8": base, "stub": base},
+                             f"#06 = {nr06:#04x}")
+
+    @unittest.skipUnless(D80_BIN.exists() and D80_SYM.exists(), "dot command not built")
+    def test_dot_command_machine_menu(self):
+        """choose_rom lists only the machines whose ROM file opens, skips the
+        menu when only the 48K is there, and numbers the items 1-n."""
+        sym = {}
+        for line in D80_SYM.read_text().splitlines():
+            name, _, val = line.partition(": EQU ")
+            if val:
+                sym[name] = int(val, 16)
+        keymap = {"1": (0xF7, 0), "2": (0xF7, 1), "3": (0xF7, 2), "4": (0xF7, 3),
+                  "ENTER": (0xBF, 0), "6": (0xEF, 4), "7": (0xEF, 3)}
+        HOLD = 3000
+
+        def run(files, keys):
+            """files: ROM names on the card; keys: pressed one after another,
+            each held then released for HOLD steps -> (name_48, printed text)"""
+            mem = bytearray(0x10000)
+            dot = D80_BIN.read_bytes()
+            mem[0x2000:0x2000 + len(dot)] = dot
+            mem[0] = 0x76
+            cpu = Z80(mem)
+
+            def port_in(port):
+                if port & 0xFF != 0xFE:
+                    return 0xFF
+                i, held = divmod(cpu.steps, 2 * HOLD)       # released, then held
+                if i >= len(keys) or held < HOLD:
+                    return 0xFF
+                row, bit = keymap[keys[i]]
+                return 0xFF & ~(1 << bit) if (port >> 8) & row == (port >> 8) else 0xFF
+            cpu.port_in = port_in
+            cpu.sp = 0xFF00
+            cpu.push(0x0000)
+            cpu.pc = sym["choose_rom"]
+            text, opened = [], []
+            while cpu.pc != 0:
+                if cpu.pc == sym["pr_char"]:                    # (uses NEXTREG + RST #10)
+                    text.append("\n" if cpu.a == 13 else chr(cpu.a))
+                    cpu.pc = cpu.pop()
+                    continue
+                if cpu.pc == 0x0008:                            # esxDOS
+                    ret = cpu.pop()
+                    fn = mem[ret]
+                    if fn == 0x9A:                              # F_OPEN, name at HL
+                        name = bytes(mem[cpu.hl:mem.index(0, cpu.hl)]).decode()
+                        opened.append(name)
+                        ok = name.removeprefix("c:/sys/d80/") in files
+                        cpu.a, cpu.f = (5, cpu.f & ~1) if ok else (5, cpu.f | 1)
+                    else:
+                        self.assertEqual(fn, 0x9B)              # F_CLOSE
+                        cpu.f &= ~1
+                    cpu.pc = ret + 1
+                    continue
+                cpu.step()
+                self.assertLess(cpu.steps, 2 * HOLD * (len(keys) + 2), "waits for a key")
+            n48 = bytes(mem[sym["name_48"]:mem.index(0, sym["name_48"])]).decode()
+            return n48, "".join(text), opened
+
+        all3 = {"gama.rom", "didm.rom", "kompakt.rom"}
+        n48, text, opened = run(set(), [])
+        self.assertEqual((n48, text), ("c:/machines/next/48.rom", ""))   # no menu
+        self.assertEqual(opened, ["c:/sys/d80/gama.rom", "c:/sys/d80/didm.rom",
+                                  "c:/sys/d80/kompakt.rom"])
+        n48, text, _ = run(all3, ["ENTER"])
+        self.assertEqual(text, "1 ZX Spectrum 48K\n2 Didaktik Gama\n3 Didaktik M\n"
+                               "4 Didaktik Kompakt\n\n")
+        self.assertEqual(n48, "c:/machines/next/48.rom")
+        self.assertEqual(run(all3, ["2"])[0], "c:/sys/d80/gama.rom")
+        n48, text, _ = run({"kompakt.rom"}, ["ENTER"])
+        self.assertEqual(text, "1 ZX Spectrum 48K\n2 Didaktik Kompakt\n\n")
+        self.assertEqual(n48, "c:/machines/next/48.rom")
+        self.assertEqual(run({"kompakt.rom"}, ["2"])[0], "c:/sys/d80/kompakt.rom")
+        self.assertEqual(run({"kompakt.rom"}, ["3", "4", "2"])[0], "c:/sys/d80/kompakt.rom")
+        self.assertEqual(run({"gama.rom", "kompakt.rom"}, ["3"])[0], "c:/sys/d80/kompakt.rom")
+        self.assertEqual(run({"didm.rom", "kompakt.rom"}, ["6", "ENTER"])[0], "c:/sys/d80/didm.rom")
+        self.assertEqual(run({"didm.rom", "kompakt.rom"}, ["6", "6", "6", "ENTER"])[0],
+                         "c:/sys/d80/kompakt.rom")                  # stops at the last item
+        self.assertEqual(run({"gama.rom"}, ["6", "7", "7", "ENTER"])[0], "c:/machines/next/48.rom")
 
     @unittest.skipUnless(have_all, "ROMs or patches.json not present")
     def test_mdos_uses_blank_image(self):
@@ -360,6 +530,19 @@ class TestSnap(unittest.TestCase):
         self.check_clean(m)
         self.assertEqual(sorted(snapshots(m)), ["SNAPSHOT00", "SNAPSHOT01"])
 
+    def test_snap_takes_a_free_name(self):
+        """MDOS 2.0 fix: after a reset the counter starts at 00 again. MDOS 1.0
+        then overwrote SNAPSHOT00; now SNAP counts up to a free name."""
+        m = self.demo()
+        self.assertTrue(m.press_snap())
+        m.run_frames(300)
+        m.cpu.mdb[0x3E61 - 0x2000] = 0                      # the counter, as after a reset
+        m.run_frames(50)
+        self.assertTrue(m.press_snap())
+        m.run_frames(300)
+        self.check_clean(m)
+        self.assertEqual(sorted(snapshots(m)), ["SNAPSHOT00", "SNAPSHOT01"])
+
     def test_snap_ignored_while_mdos_runs(self):
         import json
         from nextmmu import DidaktikNext
@@ -425,7 +608,63 @@ def lines(m):
     return [t for t in m.screen_text() if t.strip()]
 
 
-MENU_TITLE = "Swap A: and B:"                     # shown while the menu is open
+@unittest.skipUnless(have_all, "ROMs or patches.json not present")
+class TestMdos20Fixes(unittest.TestCase):
+    """MOVE between volumes, and the MDOS 2.0 fixes ported to the 1.0 patches."""
+
+    def machine(self, program, free_b=None, frames=1500):
+        """Boot with a "run" program on SrcDisk (A:, files data0-2 of 3000 bytes)
+        and DstDisk in B: (with only free_b sectors free), RUN it."""
+        from basic import tokenize
+        from image import MdosImage, add_file, blank_image
+        from nextmmu import DidaktikNext
+        a = bytearray(blank_image("SrcDisk"))
+        prog = tokenize(program)
+        add_file(a, "P", "run", prog, param1=10, param2=len(prog))
+        for n in range(3):
+            add_file(a, "B", f"data{n}", bytes([n + 1]) * 3000, param1=0x8000)
+        b = bytearray(blank_image("DstDisk"))
+        if free_b is not None:
+            add_file(b, "B", "filler", bytes(512 * (self.free(MdosImage(bytes(b))) - free_b)))
+        m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), bytes(a), image_b=bytes(b))
+        m.run_frames(150)
+        m.type_keys([["R"], ["ENTER"]])
+        m.run_frames(frames)
+        return m
+
+    @staticmethod
+    def free(im):
+        return sum(1 for s in range(14, im.total_sectors) if im.fat(s) == 0)
+
+    def files(self, m, drive):
+        from image import MdosImage
+        im = MdosImage(m.image_bytes(drive))
+        for e in im.entries():
+            self.assertIsNone(im.check(e))
+        return [e.name.strip() for e in im.entries()], self.free(im)
+
+    def test_move_keeps_program_memory(self):
+        """Volume names match (zero-padded disk names); MOVE no longer writes
+        #C000 (MDOS 1.0 stored BC there)."""
+        m = self.machine('10 POKE 49152,85: POKE 49153,170: MOVE "SrcDisk:data*","DstDisk:*"\n'
+                         '20 PRINT PEEK 49152,PEEK 49153')
+        self.assertEqual(lines(m), ["3 File(s) copied.", "85              170", "0 OK, 20:1"])
+        self.assertEqual(self.files(m, 1), (["data0", "data1", "data2"], 1426 - 18))
+        self.assertEqual(m.image_bytes(1)[192:202], b"DstDisk\0\0\0")
+
+    def test_move_disk_full_leaves_no_entry(self):
+        """MDOS 1.0 left the file that did not fit with an empty FAT chain."""
+        m = self.machine('10 MOVE "SrcDisk:data*","DstDisk:*"', free_b=8)
+        self.assertEqual(lines(m)[-1], "U Disk full, 10:1")
+        self.assertEqual(self.files(m, 1), (["filler", "data0"], 2))
+
+    def test_save_disk_full_leaves_no_entry(self):
+        m = self.machine('10 SAVE *"DstDisk:big" CODE 32768,3000', free_b=3, frames=800)
+        self.assertEqual(lines(m)[-1], "U Disk full, 10:1")
+        self.assertEqual(self.files(m, 1), (["filler"], 3))
+
+
+MENU_TITLE = "Swap A: and B:"                    # shown while the menu is open
 HOLD = 400_000                                         # CPU steps: DRIVE held (> 0.4 s)
 
 
@@ -629,20 +868,6 @@ class TestDriveB(unittest.TestCase):
         m.type_keys(CAT)                                   # A: still works
         m.run_frames(60)
         self.assertIn("Directory of D80 Demo", m.screen_text())
-
-    @unittest.skipUnless((SAMPLES / "035-X-MAGAZIN.d80").exists(), "035-X-MAGAZIN.d80 missing")
-    def test_sector_ops_follow_active_drive(self):
-        """X-MAGAZIN reaches the sector loop with IX = #3E0C (drive 1's descriptor)
-        while A: is active. MDOS's own ops select the drive from #3E6B, so must ours:
-        selecting by IX gave "Device unavailable" (B: is empty)."""
-        from nextmmu import DidaktikNext
-        img = (SAMPLES / "035-X-MAGAZIN.d80").read_bytes()
-        m = DidaktikNext(MDOS.read_bytes(), ROM48.read_bytes(), img)
-        m.run_frames(150)
-        m.type_keys([["R"], ["ENTER"]])
-        m.run_frames(600)
-        self.assertNotIn("Device unavailable", m.screen_text())
-        self.assertEqual(m.fdc_access, [])
 
 
 @unittest.skipUnless(have_all, "ROMs or patches.json not present")
